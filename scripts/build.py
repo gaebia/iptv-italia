@@ -1,10 +1,18 @@
+import gzip
 import re
 import urllib.request
 from pathlib import Path
 
 OUTPUT = Path("playlist_italia.m3u8")
+EPG_OUTPUT = Path("epg_italia.xml")
 
 SOURCE = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"
+EPG_SOURCE = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
+
+EPG_URL = (
+    "https://raw.githubusercontent.com/"
+    "gaebia/iptv-italia/main/epg_italia.xml"
+)
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 IPTV-Italia-Updater"
@@ -26,10 +34,7 @@ def download(url):
         timeout=120
     ) as response:
 
-        return response.read().decode(
-            "utf-8",
-            errors="replace"
-        )
+        return response.read()
 
 
 # ============================================================
@@ -162,21 +167,18 @@ def is_bad_stream(info, stream):
         info + " " + stream
     ).lower()
 
-    # NON disponibili
     if "[geo-blocked]" in text:
         return True
 
     if "[not 24/7]" in text:
         return True
 
-    # YouTube
     if "youtube.com" in stream.lower():
         return True
 
     if "youtu.be" in stream.lower():
         return True
 
-    # Twitch
     if "twitch.tv" in stream.lower():
         return True
 
@@ -191,7 +193,6 @@ def normalized_name(name):
 
     value = name.lower().strip()
 
-    # Rimuove i simboli usati da Free-TV
     for symbol in [
         "ⓖ",
         "Ⓖ",
@@ -204,7 +205,6 @@ def normalized_name(name):
             ""
         )
 
-    # Spazi multipli
     value = re.sub(
         r"\s+",
         " ",
@@ -217,12 +217,6 @@ def normalized_name(name):
 # ============================================================
 # CANALI NAZIONALI
 # ============================================================
-
-# Questa lista serve SOLO per distinguere i canali nazionali
-# dai regionali che possono avere accidentalmente un tvg-chno.
-#
-# I numeri NON vengono creati qui.
-# Il numero viene SEMPRE letto da tvg-chno.
 
 NATIONAL_CHANNELS = {
     "rai 1",
@@ -289,8 +283,8 @@ NATIONAL_CHANNELS = {
     "sportitalia plus",
     "sportitalia solocalcio",
 
-    "supert ennis",
     "supertennis",
+    "super t ennis",
 
     "sky tg24",
 
@@ -325,23 +319,6 @@ def channel_sort_key(entry):
         name
     )
 
-    # --------------------------------------------------------
-    # NAZIONALI
-    # --------------------------------------------------------
-    #
-    # Solo i canali nazionali vengono ordinati tramite
-    # il loro tvg-chno.
-    #
-    # Esempio:
-    #
-    # Rai 1          tvg-chno="1"
-    # Rai 2          tvg-chno="2"
-    # Rai 3          tvg-chno="3"
-    #
-    # Peer TV Südtirol può avere anch'esso tvg-chno="2",
-    # ma NON è nella lista NATIONAL_CHANNELS.
-    # Quindi viene mandato alla sezione regionali/locali.
-
     if (
         name_key in NATIONAL_CHANNELS
         and chno is not None
@@ -353,15 +330,6 @@ def channel_sort_key(entry):
             name_key
         )
 
-    # --------------------------------------------------------
-    # REGIONALI / LOCALI
-    # --------------------------------------------------------
-    #
-    # Tutti gli altri canali vengono dopo i nazionali.
-    #
-    # Quindi Peer TV Südtirol NON può più inserirsi tra
-    # Rai 1 e Rai 2.
-
     return (
         1,
         999999,
@@ -370,7 +338,7 @@ def channel_sort_key(entry):
 
 
 # ============================================================
-# DOWNLOAD
+# DOWNLOAD PLAYLIST
 # ============================================================
 
 print()
@@ -378,8 +346,13 @@ print("==============================================")
 print("DOWNLOAD PLAYLIST FREE-TV")
 print("==============================================")
 
-text = download(
+raw_playlist = download(
     SOURCE
+)
+
+text = raw_playlist.decode(
+    "utf-8",
+    errors="replace"
 )
 
 entries = parse_m3u(
@@ -452,10 +425,6 @@ for entry in italian:
         entry["name"]
     )
 
-    # --------------------------------------------------------
-    # tvg-id
-    # --------------------------------------------------------
-
     if tvg_id:
 
         id_key = tvg_id.lower()
@@ -468,10 +437,6 @@ for entry in italian:
         )
 
     else:
-
-        # ----------------------------------------------------
-        # Nome
-        # ----------------------------------------------------
 
         if name_key in seen_names:
             continue
@@ -500,54 +465,58 @@ unique.sort(
 
 
 # ============================================================
-# EPG
+# DOWNLOAD EPG ITALIA
 # ============================================================
 
-first_line = ""
+print()
+print("==============================================")
+print("DOWNLOAD EPG ITALIA")
+print("==============================================")
 
-for line in text.splitlines():
+try:
 
-    if line.strip().startswith(
-        "#EXTM3U"
-    ):
+    epg_gz = download(
+        EPG_SOURCE
+    )
 
-        first_line = line.strip()
-        break
+    epg_xml = gzip.decompress(
+        epg_gz
+    ).decode(
+        "utf-8",
+        errors="replace"
+    )
 
+    EPG_OUTPUT.write_text(
+        epg_xml,
+        encoding="utf-8"
+    )
 
-epg_match = re.search(
-    r'x-tvg-url="([^"]+)"',
-    first_line,
-    re.IGNORECASE
-)
+    print(
+        f"EPG creato: {EPG_OUTPUT}"
+    )
 
+    print(
+        f"Dimensione EPG: {len(epg_xml):,} caratteri"
+    )
 
-if epg_match:
+except Exception as e:
 
-    epg_url = epg_match.group(1)
+    print(
+        f"ERRORE EPG: {e}"
+    )
 
-else:
-
-    epg_url = ""
+    raise
 
 
 # ============================================================
-# OUTPUT
+# OUTPUT PLAYLIST
 # ============================================================
 
 output = []
 
-if epg_url:
-
-    output.append(
-        f'#EXTM3U x-tvg-url="{epg_url}"'
-    )
-
-else:
-
-    output.append(
-        "#EXTM3U"
-    )
+output.append(
+    f'#EXTM3U x-tvg-url="{EPG_URL}"'
+)
 
 
 for entry in unique:
@@ -610,19 +579,29 @@ print()
 print("==============================================")
 print("PLAYLIST CREATA")
 print("==============================================")
+
 print(
     f"Totale:              {len(unique)}"
 )
+
 print(
     f"Nazionali numerati:  {len(national)}"
 )
+
 print(
     f"Regionali/locali:    {len(regional)}"
 )
+
 print(
-    f"File:                {OUTPUT}"
+    f"File playlist:        {OUTPUT}"
 )
+
+print(
+    f"File EPG:             {EPG_OUTPUT}"
+)
+
 print("==============================================")
+
 
 print()
 print("PRIMI CANALI:")
