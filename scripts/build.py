@@ -4,151 +4,28 @@ from pathlib import Path
 
 OUTPUT = Path("playlist_italia.m3u8")
 
-# ============================================================
-# CONFIGURAZIONE
-# ============================================================
-
-# Sorgente principale:
-# iptv-org genera quotidianamente la playlist pubblica
-# scegliendo una sola sorgente preferibile per ogni canale.
-PRIMARY_SOURCE = (
-    "https://iptv-org.github.io/iptv/countries/it.m3u"
-)
-
-# Fallback nazionale:
-# usato soltanto per canali che non sono già presenti.
-FALLBACK_SOURCES = [
-    "https://raw.githubusercontent.com/Tundrak/IPTV-Italia/main/iptvitaplus.m3u",
-    "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlists/playlist_italy.m3u8",
-]
-
-# Regioni/locali aggiuntivi.
-# NON vengono più caricati tutti indiscriminatamente:
-# servono soltanto per recuperare eventuali canali locali
-# che non compaiono nella playlist nazionale.
-REGIONAL_SOURCES = [
-    "it-65",  # Emilia-Romagna
-    "it-77",  # Basilicata
-    "it-78",  # Calabria
-    "it-72",  # Campania
-    "it-45",  # Friuli-Venezia Giulia
-    "it-36",  # Lazio
-    "it-62",  # Liguria
-    "it-42",  # Lombardia
-    "it-25",  # Marche
-    "it-57",  # Piemonte
-    "it-67",  # Puglia
-    "it-21",  # Piemonte / Valle d'Aosta
-    "it-75",  # Sardegna
-    "it-88",  # Sicilia
-    "it-82",  # Toscana
-    "it-52",  # Trentino-Alto Adige
-    "it-32",  # Trentino-Alto Adige
-    "it-55",  # Umbria
-    "it-23",  # Valle d'Aosta
-    "it-34",  # Veneto
-]
-
-EPG_URLS = [
-    "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz",
-]
+SOURCE = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 IPTV-Italia-Updater"
 }
 
 # ============================================================
-# FILTRI
-# ============================================================
-
-BLOCKED_TEXT = [
-    "[geo-blocked]",
-    "[not 24/7]",
-    "geo-blocked",
-    "not 24/7",
-]
-
-BLOCKED_STREAMS = [
-    "youtube.com",
-    "youtu.be",
-    "twitch.tv",
-]
-
-# Non vogliamo stream DASH .mpd nel risultato finale.
-# DIIXTREAM lavora meglio con gli HLS .m3u8.
-BLOCKED_EXTENSIONS = [
-    ".mpd",
-]
-
-# Etichette che indicano contenuti esteri / versioni straniere
-# che non vogliamo nella playlist italiana.
-FOREIGN_MARKERS = [
-    "(germany)",
-    "(france)",
-    "(spain)",
-    "(uk)",
-    "(united kingdom)",
-    "(poland)",
-    "(portugal)",
-    "(switzerland)",
-    "(austria)",
-    "(netherlands)",
-]
-
-# ============================================================
-# ALIAS
-# ============================================================
-
-# Normalizzazione dei nomi per eliminare duplicati come:
-# Rai 1 / Rai 1 HD / Rai 1 (720p) ecc.
-ALIASES = {
-    "rete 4": "Rete 4",
-    "rete 4 hd": "Rete 4",
-    "canale 5": "Canale 5",
-    "canale 5 hd": "Canale 5",
-    "italia 1": "Italia 1",
-    "italia 1 hd": "Italia 1",
-    "la7": "La7",
-    "la 7": "La7",
-    "tv8": "TV8",
-    "nove": "Nove",
-    "20": "20 Mediaset",
-    "20 mediaset": "20 Mediaset",
-    "rai 1": "Rai 1",
-    "rai 2": "Rai 2",
-    "rai 3": "Rai 3",
-    "rai 4": "Rai 4",
-    "rai 5": "Rai 5",
-    "rai movie": "Rai Movie",
-    "rai premium": "Rai Premium",
-    "rai storia": "Rai Storia",
-    "rai scuola": "Rai Scuola",
-    "rai sport": "Rai Sport",
-    "mediaset extra": "Mediaset Extra",
-    "iris": "Iris",
-    "la5": "La5",
-    "cielo": "Cielo",
-}
-
-# ============================================================
-# FUNZIONI
+# DOWNLOAD
 # ============================================================
 
 def download(url):
     request = urllib.request.Request(url, headers=HEADERS)
 
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return response.read().decode(
-            "utf-8",
-            errors="replace"
-        )
+    with urllib.request.urlopen(request, timeout=120) as response:
+        return response.read().decode("utf-8", errors="replace")
 
+
+# ============================================================
+# M3U PARSER
+# ============================================================
 
 def parse_m3u(text):
-    """
-    Restituisce:
-    (EXTINF, EXT-X-..., URL)
-    """
 
     lines = [
         line.strip()
@@ -171,15 +48,21 @@ def parse_m3u(text):
 
         j = i + 1
 
+        # Conserviamo eventuali direttive associate
+        # alla sorgente originale.
         while j < len(lines) and lines[j].startswith("#"):
+
             if lines[j].startswith("#EXTVLCOPT"):
                 extras.append(lines[j])
+
             j += 1
 
         if j < len(lines):
+
             stream = lines[j]
 
             if stream.startswith(("http://", "https://")):
+
                 entries.append(
                     (info, extras, stream)
                 )
@@ -189,6 +72,10 @@ def parse_m3u(text):
     return entries
 
 
+# ============================================================
+# ATTRIBUTI
+# ============================================================
+
 def get_attr(info, name):
 
     match = re.search(
@@ -197,298 +84,285 @@ def get_attr(info, name):
         re.IGNORECASE
     )
 
-    return (
-        match.group(1).strip()
-        if match
-        else ""
-    )
+    if match:
+        return match.group(1).strip()
+
+    return ""
 
 
-def channel_name(info):
+def get_channel_name(info):
 
     if "," not in info:
         return ""
 
-    name = info.split(",", 1)[1].strip()
+    return info.split(",", 1)[1].strip()
 
-    # Rimuove eventuali indicazioni di qualità
-    name = re.sub(
-        r"\s*\((?:1080p|720p|576p|480p|360p)\)\s*$",
-        "",
-        name,
-        flags=re.IGNORECASE
+
+def get_chno(info):
+
+    value = get_attr(info, "tvg-chno")
+
+    if not value:
+        return None
+
+    try:
+        # Gestisce anche eventuali valori come 22.1
+        return float(value)
+    except ValueError:
+        return None
+
+
+# ============================================================
+# FILTRI
+# ============================================================
+
+def is_italian(info):
+
+    country = get_attr(info, "tvg-country").upper()
+    group = get_attr(info, "group-title").lower()
+
+    return (
+        country == "IT"
+        or group == "italy"
+        or group == "italia"
     )
 
-    return name.strip()
 
+def is_bad_stream(info, stream):
+
+    text = (info + " " + stream).lower()
+
+    # Canali esplicitamente non disponibili
+    if "[geo-blocked]" in text:
+        return True
+
+    if "[not 24/7]" in text:
+        return True
+
+    # YouTube / Twitch
+    if "youtube.com" in stream.lower():
+        return True
+
+    if "youtu.be" in stream.lower():
+        return True
+
+    if "twitch.tv" in stream.lower():
+        return True
+
+    return False
+
+
+# ============================================================
+# NORMALIZZAZIONE NOME
+# ============================================================
 
 def normalized_name(name):
 
     value = name.lower().strip()
 
-    value = re.sub(
-        r"\s*\((?:1080p|720p|576p|480p|360p)\)",
-        "",
-        value,
-        flags=re.IGNORECASE
-    )
+    # Elimina i simboli utilizzati da Free-TV
+    value = value.replace("ⓖ", "")
+    value = value.replace("Ⓖ", "")
+    value = value.replace("Ⓢ", "")
+    value = value.replace("Ⓣ", "")
+    value = value.replace("Ⓨ", "")
 
-    value = re.sub(
-        r"\s+",
-        " ",
-        value
-    )
+    # Spazi multipli
+    value = re.sub(r"\s+", " ", value)
 
-    if value in ALIASES:
-        return ALIASES[value].lower()
-
-    return value
-
-
-def is_allowed(info, stream):
-
-    text = (
-        info + " " + stream
-    ).lower()
-
-    # Geo-blocked / non-24/7
-    for blocked in BLOCKED_TEXT:
-        if blocked in text:
-            return False
-
-    # YouTube / Twitch
-    for blocked in BLOCKED_STREAMS:
-        if blocked in stream.lower():
-            return False
-
-    # DASH
-    for extension in BLOCKED_EXTENSIONS:
-        if stream.lower().split("?", 1)[0].endswith(extension):
-            return False
-
-    # Contenuti stranieri
-    name = channel_name(info).lower()
-
-    for marker in FOREIGN_MARKERS:
-        if marker in name:
-            return False
-
-    return True
-
-
-def clean_info(info):
-
-    info = info.replace(
-        'group-title="Italy"',
-        'group-title="Italia"'
-    )
-
-    info = info.replace(
-        'group-title="Italian"',
-        'group-title="Italia"'
-    )
-
-    return info
-
-
-def load_source(url):
-
-    try:
-        print(f"DOWNLOAD: {url}")
-
-        text = download(url)
-
-        entries = parse_m3u(text)
-
-        print(
-            f"  -> {len(entries)} entries"
-        )
-
-        return entries
-
-    except Exception as error:
-
-        print(
-            f"WARNING: {url} -> {error}"
-        )
-
-        return []
+    return value.strip()
 
 
 # ============================================================
-# COSTRUZIONE
+# PRIORITÀ
 # ============================================================
 
-# Dizionario:
-# nome normalizzato -> entry scelta
-channels = {}
+# Questi sono i canali con numerazione LCN.
+# NON assegniamo noi il numero.
+# Usiamo esclusivamente tvg-chno della sorgente Free-TV.
 
+def channel_sort_key(entry):
 
-def add_entries(entries, source_name):
+    info = entry["info"]
+    name = entry["name"]
 
-    added = 0
-    rejected = 0
-    duplicates = 0
+    chno = get_chno(info)
 
-    for info, extras, stream in entries:
-
-        info = clean_info(info)
-
-        if not is_allowed(info, stream):
-            rejected += 1
-            continue
-
-        name = channel_name(info)
-
-        if not name:
-            rejected += 1
-            continue
-
-        key = normalized_name(name)
-
-        if key in channels:
-            duplicates += 1
-            continue
-
-        channels[key] = (
-            info,
-            extras,
-            stream,
-            source_name
+    # Tutti i canali con tvg-chno vengono prima.
+    if chno is not None:
+        return (
+            0,
+            chno,
+            normalized_name(name)
         )
 
-        added += 1
-
-    print(
-        f"{source_name}: "
-        f"aggiunti={added}, "
-        f"duplicati={duplicates}, "
-        f"scartati={rejected}"
+    # Tutti quelli senza numero vengono dopo.
+    return (
+        1,
+        999999,
+        normalized_name(name)
     )
 
 
-# ------------------------------------------------------------
-# 1. PRIMA SCELTA:
-#    iptv-org
-# ------------------------------------------------------------
+# ============================================================
+# DOWNLOAD SORGENTE
+# ============================================================
 
-primary = load_source(PRIMARY_SOURCE)
+print("Download playlist Free-TV...")
 
-add_entries(
-    primary,
-    "iptv-org"
+text = download(SOURCE)
+
+entries = parse_m3u(text)
+
+print(f"Entry ricevute: {len(entries)}")
+
+
+# ============================================================
+# SELEZIONE ITALIA
+# ============================================================
+
+italian = []
+
+for info, extras, stream in entries:
+
+    if not is_italian(info):
+        continue
+
+    if is_bad_stream(info, stream):
+        continue
+
+    name = get_channel_name(info)
+
+    if not name:
+        continue
+
+    italian.append({
+        "info": info,
+        "extras": extras,
+        "stream": stream,
+        "name": name
+    })
+
+
+print(
+    f"Canali italiani dopo filtro: {len(italian)}"
 )
 
 
-# ------------------------------------------------------------
-# 2. REGIONALI:
-#    solo canali che mancano
-# ------------------------------------------------------------
+# ============================================================
+# DEDUPLICAZIONE
+# ============================================================
 
-for region in REGIONAL_SOURCES:
+# IMPORTANTISSIMO:
+#
+# Non deduplichiamo semplicemente per tvg-id.
+#
+# Free-TV può avere più righe dello stesso canale,
+# alcune delle quali marcate Ⓖ e altre no.
+#
+# Manteniamo la prima versione utile.
+#
+# La playlist Free-TV è già ordinata secondo la propria
+# selezione delle sorgenti, quindi NON sostituiamo gli URL.
 
-    url = (
-        "https://iptv-org.github.io/iptv/"
-        f"subdivisions/{region}.m3u"
-    )
+seen_ids = set()
+seen_names = set()
 
-    regional = load_source(url)
+unique = []
 
-    add_entries(
-        regional,
-        f"region-{region}"
-    )
+for entry in italian:
+
+    info = entry["info"]
+
+    tvg_id = get_attr(info, "tvg-id")
+    name_key = normalized_name(entry["name"])
+
+    # Prima scelta: tvg-id
+    if tvg_id:
+
+        key = tvg_id.lower()
+
+        if key in seen_ids:
+            continue
+
+        seen_ids.add(key)
+
+    else:
+
+        # Se manca tvg-id, usiamo il nome.
+        if name_key in seen_names:
+            continue
+
+        seen_names.add(name_key)
+
+    unique.append(entry)
 
 
-# ------------------------------------------------------------
-# 3. FALLBACK NAZIONALI
-# ------------------------------------------------------------
-
-for source in FALLBACK_SOURCES:
-
-    fallback = load_source(source)
-
-    add_entries(
-        fallback,
-        "fallback"
-    )
+print(
+    f"Canali dopo deduplicazione: {len(unique)}"
+)
 
 
 # ============================================================
 # ORDINAMENTO
 # ============================================================
 
-# Canali nazionali principali prima.
-PRIORITY = [
-    "rai 1",
-    "rai 2",
-    "rai 3",
-    "rete 4",
-    "canale 5",
-    "italia 1",
-    "la7",
-    "tv8",
-    "nove",
-    "20 mediaset",
-    "rai 4",
-    "rai 5",
-    "rai movie",
-    "rai premium",
-    "rai storia",
-    "rai scuola",
-    "rai sport",
-    "mediaset extra",
-    "iris",
-    "la5",
-    "cielo",
-]
+unique.sort(key=channel_sort_key)
 
 
-def sort_key(item):
+# ============================================================
+# EPG
+# ============================================================
 
-    key = item[0]
+# Manteniamo ESATTAMENTE gli URL EPG presenti
+# nell'header originale Free-TV.
 
-    if key in PRIORITY:
-        return (
-            0,
-            PRIORITY.index(key)
-        )
+first_line = text.splitlines()[0].strip()
 
-    return (
-        1,
-        key
-    )
-
-
-ordered = sorted(
-    channels.items(),
-    key=sort_key
+epg_match = re.search(
+    r'x-tvg-url="([^"]+)"',
+    first_line,
+    re.IGNORECASE
 )
+
+if epg_match:
+
+    epg_url = epg_match.group(1)
+
+else:
+
+    epg_url = ""
 
 
 # ============================================================
 # OUTPUT
 # ============================================================
 
-epg = ",".join(EPG_URLS)
+output = []
 
-output = [
-    f'#EXTM3U x-tvg-url="{epg}"'
-]
+if epg_url:
 
-for key, (
-    info,
-    extras,
-    stream,
-    source
-) in ordered:
+    output.append(
+        f'#EXTM3U x-tvg-url="{epg_url}"'
+    )
 
-    output.append(info)
+else:
 
-    for extra in extras:
+    output.append("#EXTM3U")
+
+
+# ============================================================
+# SCRITTURA
+# ============================================================
+
+for entry in unique:
+
+    output.append(entry["info"])
+
+    for extra in entry["extras"]:
         output.append(extra)
 
-    output.append(stream)
+    output.append(entry["stream"])
 
 
 OUTPUT.write_text(
@@ -496,17 +370,41 @@ OUTPUT.write_text(
     encoding="utf-8"
 )
 
+
+# ============================================================
+# REPORT
+# ============================================================
+
+numbered = [
+    e for e in unique
+    if get_chno(e["info"]) is not None
+]
+
+regional = [
+    e for e in unique
+    if get_chno(e["info"]) is None
+]
+
+
 print()
 print("=" * 60)
-print("PLAYLIST CREATA")
+print("PLAYLIST ITALIA CREATA")
 print("=" * 60)
-print(
-    f"Canali finali: {len(ordered)}"
-)
-print(
-    f"File: {OUTPUT}"
-)
-print(
-    f"EPG: {len(EPG_URLS)} sorgente"
-)
+print(f"Totale canali:       {len(unique)}")
+print(f"Canali numerati:     {len(numbered)}")
+print(f"Regionali/locali:    {len(regional)}")
+print(f"File:                {OUTPUT}")
 print("=" * 60)
+
+print()
+print("PRIMI CANALI:")
+
+for entry in unique[:20]:
+
+    chno = get_chno(entry["info"])
+    name = entry["name"]
+
+    if chno is not None:
+        print(f"{chno:g}  {name}")
+    else:
+        print(f"-    {name}")
