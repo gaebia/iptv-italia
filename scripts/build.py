@@ -1,6 +1,7 @@
 import gzip
 import re
 import urllib.request
+import urllib.error
 from pathlib import Path
 
 OUTPUT = Path("playlist_italia.m3u8")
@@ -35,6 +36,38 @@ def download(url):
     ) as response:
 
         return response.read()
+
+
+def stream_is_alive(url):
+    if not url:
+        return False
+
+    url = url.strip()
+    if not url.startswith(("http://", "https://")):
+        return False
+
+    attempts = [
+        urllib.request.Request(url, headers=HEADERS, method="HEAD"),
+        urllib.request.Request(
+            url,
+            headers={**HEADERS, "Range": "bytes=0-0"},
+            method="GET"
+        )
+    ]
+
+    for request in attempts:
+        try:
+            with urllib.request.urlopen(request, timeout=15) as response:
+                code = getattr(response, "status", 200)
+                if 200 <= code < 400:
+                    return True
+        except urllib.error.HTTPError as exc:
+            if exc.code in {403, 404, 410, 451, 500, 502, 503, 504}:
+                continue
+        except Exception:
+            continue
+
+    return False
 
 
 # ============================================================
@@ -415,6 +448,24 @@ for entry in italian:
     unique.append(entry)
 
 print(f"Canali dopo deduplicazione: {len(unique)}")
+
+
+# ============================================================
+# VALIDAZIONE STREAM
+# ============================================================
+
+verified = []
+removed = 0
+
+for entry in unique:
+    if stream_is_alive(entry["stream"]):
+        verified.append(entry)
+    else:
+        removed += 1
+        print(f"Rimosso: {entry['name']} -> {entry['stream'][:120]}")
+
+unique = verified
+print(f"Canali dopo validazione stream: {len(unique)} (rimossi {removed})")
 
 
 # ============================================================
