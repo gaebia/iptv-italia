@@ -1,1 +1,56 @@
+name: Aggiorna IPTV Italia
 
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * *"
+  push:
+    paths:
+      - "scripts/build.py"
+      - ".github/workflows/update.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: aggiorna-iptv-italia
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Genera playlist ed EPG
+        run: python scripts/build.py
+
+      - name: Controlla file generati
+        run: |
+          test -s playlist_italia.m3u8
+          test -s epg_italia.xml
+
+      - name: Salva playlist ed EPG
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add playlist_italia.m3u8 epg_italia.xml
+
+          if git diff --cached --quiet; then
+            echo "Nessuna modifica ai file generati."
+            exit 0
+          fi
+
+          git commit -m "Aggiorna playlist ed EPG"
+          git push origin HEAD:main
