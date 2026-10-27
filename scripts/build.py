@@ -92,11 +92,21 @@ def parse_m3u(text):
 
 
 # ============================================================
-# ATTRIBUTI
+# ATTRIBUTI / NORMALIZZAZIONE
 # ============================================================
 
-def get_attr(info, name):
+def normalize_text(value):
+    if value is None:
+        return ""
 
+    value = str(value).lower()
+    value = value.replace("&", " and ")
+    value = re.sub(r"[^a-z0-9\s]+", " ", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return value
+
+
+def get_attr(info, name):
     match = re.search(
         rf'{re.escape(name)}="([^"]*)"',
         info,
@@ -110,7 +120,6 @@ def get_attr(info, name):
 
 
 def get_channel_name(info):
-
     if "," not in info:
         return ""
 
@@ -118,82 +127,92 @@ def get_channel_name(info):
 
 
 def get_chno(info):
-
-    value = get_attr(
-        info,
-        "tvg-chno"
-    )
+    value = get_attr(info, "tvg-chno")
 
     if not value:
         return None
 
     try:
         return float(value)
-
     except ValueError:
         return None
 
 
+def normalized_name(name):
+    value = name.lower().strip()
+
+    for symbol in [
+        "ⓖ",
+        "Ⓖ",
+        "Ⓢ",
+        "Ⓣ",
+        "Ⓨ"
+    ]:
+        value = value.replace(symbol, "")
+
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
 # ============================================================
-# FILTRO ITALIA
+# FILTRO ITALIA ROBUSTO
 # ============================================================
 
 def is_italian(info):
-
-    country = get_attr(
-        info,
-        "tvg-country"
-    ).upper()
-
-    group = get_attr(
-        info,
-        "group-title"
-    ).lower()
-
-    name = get_attr(
-        info,
-        "tvg-name"
-    ).lower()
-
-    channel_name = get_channel_name(info).lower()
-
-    if country == "IT":
-        return True
+    country = normalize_text(get_attr(info, "tvg-country"))
+    group = normalize_text(get_attr(info, "group-title"))
+    name = normalize_text(get_attr(info, "tvg-name"))
+    channel_name = normalize_text(get_channel_name(info))
 
     combined = " ".join(
-        part for part in (group, name, channel_name) if part
+        part for part in (country, group, name, channel_name) if part
     )
 
     if not combined:
         return False
 
-    italian_tokens = (
+    if country in {"it", "italy", "italia"}:
+        return True
+
+    if group in {"italy", "italia"}:
+        return True
+
+    italian_markers = (
         "italy",
         "italia",
-        "mediaset",
         "rai",
+        "mediaset",
         "sky",
-        "it",
-        "cielo",
         "tv8",
+        "cielo",
         "canale",
-        "super!",
-        "rtl",
         "dmax",
         "sportitalia",
-        "tg24",
+        "deejay",
+        "rtl",
         "giallo",
         "boing",
         "focus",
-        "deejay",
+        "tgcom",
+        "tg24",
         "top crime",
-        "ninety",
+        "super",
+        "cartoonito",
+        "rai news",
+        "rai sport",
+        "italia 1",
+        "italia 2",
+        "tv 2000",
     )
 
-    return any(
-        token in combined
-        for token in italian_tokens
-    )
+    if any(marker in combined for marker in italian_markers):
+        return True
+
+    if re.search(r"\b(rai|mediaset|sky|canale|italia|tv8|cielo)\b", combined):
+        if re.search(r"\b\d+\b", combined) or re.search(r"\b(ch|tv|hd|it)\b", combined):
+            return True
+
+    return False
 
 
 # ============================================================
@@ -201,10 +220,7 @@ def is_italian(info):
 # ============================================================
 
 def is_bad_stream(info, stream):
-
-    text = (
-        info + " " + stream
-    ).lower()
+    text = (info + " " + stream).lower()
 
     if "[geo-blocked]" in text:
         return True
@@ -225,35 +241,6 @@ def is_bad_stream(info, stream):
         return True
 
     return False
-
-
-# ============================================================
-# NORMALIZZAZIONE
-# ============================================================
-
-def normalized_name(name):
-
-    value = name.lower().strip()
-
-    for symbol in [
-        "ⓖ",
-        "Ⓖ",
-        "Ⓢ",
-        "Ⓣ",
-        "Ⓨ"
-    ]:
-        value = value.replace(
-            symbol,
-            ""
-        )
-
-    value = re.sub(
-        r"\s+",
-        " ",
-        value
-    )
-
-    return value.strip()
 
 
 # ============================================================
@@ -350,33 +337,14 @@ NATIONAL_CHANNELS = {
 # ============================================================
 
 def channel_sort_key(entry):
-
     name = entry["name"]
+    chno = get_chno(entry["info"])
+    name_key = normalized_name(name)
 
-    chno = get_chno(
-        entry["info"]
-    )
+    if name_key in NATIONAL_CHANNELS and chno is not None:
+        return (0, chno, name_key)
 
-    name_key = normalized_name(
-        name
-    )
-
-    if (
-        name_key in NATIONAL_CHANNELS
-        and chno is not None
-    ):
-
-        return (
-            0,
-            chno,
-            name_key
-        )
-
-    return (
-        1,
-        999999,
-        name_key
-    )
+    return (1, 999999, name_key)
 
 
 # ============================================================
@@ -388,22 +356,11 @@ print("==============================================")
 print("DOWNLOAD PLAYLIST FREE-TV")
 print("==============================================")
 
-raw_playlist = download(
-    SOURCE
-)
+raw_playlist = download(SOURCE)
+text = raw_playlist.decode("utf-8", errors="replace")
+entries = parse_m3u(text)
 
-text = raw_playlist.decode(
-    "utf-8",
-    errors="replace"
-)
-
-entries = parse_m3u(
-    text
-)
-
-print(
-    f"Entry ricevute: {len(entries)}"
-)
+print(f"Entry ricevute: {len(entries)}")
 
 
 # ============================================================
@@ -413,36 +370,23 @@ print(
 italian = []
 
 for entry in entries:
-
     info = entry["info"]
     stream = entry["stream"]
 
     if not is_italian(info):
         continue
 
-    if is_bad_stream(
-        info,
-        stream
-    ):
+    if is_bad_stream(info, stream):
         continue
 
-    name = get_channel_name(
-        info
-    )
-
+    name = get_channel_name(info)
     if not name:
         continue
 
     entry["name"] = name
+    italian.append(entry)
 
-    italian.append(
-        entry
-    )
-
-
-print(
-    f"Canali italiani: {len(italian)}"
-)
+print(f"Canali italiani: {len(italian)}")
 
 
 # ============================================================
@@ -450,60 +394,34 @@ print(
 # ============================================================
 
 unique = []
-
 seen_ids = set()
 seen_names = set()
 
 for entry in italian:
-
     info = entry["info"]
-
-    tvg_id = get_attr(
-        info,
-        "tvg-id"
-    )
-
-    name_key = normalized_name(
-        entry["name"]
-    )
+    tvg_id = get_attr(info, "tvg-id")
+    name_key = normalized_name(entry["name"])
 
     if tvg_id:
-
         id_key = tvg_id.lower()
-
         if id_key in seen_ids:
             continue
-
-        seen_ids.add(
-            id_key
-        )
-
+        seen_ids.add(id_key)
     else:
-
         if name_key in seen_names:
             continue
+        seen_names.add(name_key)
 
-        seen_names.add(
-            name_key
-        )
+    unique.append(entry)
 
-    unique.append(
-        entry
-    )
-
-
-print(
-    f"Canali dopo deduplicazione: {len(unique)}"
-)
+print(f"Canali dopo deduplicazione: {len(unique)}")
 
 
 # ============================================================
 # ORDINAMENTO
 # ============================================================
 
-unique.sort(
-    key=channel_sort_key
-)
+unique.sort(key=channel_sort_key)
 
 
 # ============================================================
@@ -516,37 +434,15 @@ print("DOWNLOAD EPG ITALIA")
 print("==============================================")
 
 try:
+    epg_gz = download(EPG_SOURCE)
+    epg_xml = gzip.decompress(epg_gz).decode("utf-8", errors="replace")
+    EPG_OUTPUT.write_text(epg_xml, encoding="utf-8")
 
-    epg_gz = download(
-        EPG_SOURCE
-    )
-
-    epg_xml = gzip.decompress(
-        epg_gz
-    ).decode(
-        "utf-8",
-        errors="replace"
-    )
-
-    EPG_OUTPUT.write_text(
-        epg_xml,
-        encoding="utf-8"
-    )
-
-    print(
-        f"EPG creato: {EPG_OUTPUT}"
-    )
-
-    print(
-        f"Dimensione EPG: {len(epg_xml):,} caratteri"
-    )
+    print(f"EPG creato: {EPG_OUTPUT}")
+    print(f"Dimensione EPG: {len(epg_xml):,} caratteri")
 
 except Exception as e:
-
-    print(
-        f"ERRORE EPG: {e}"
-    )
-
+    print(f"ERRORE EPG: {e}")
     raise
 
 
@@ -554,34 +450,15 @@ except Exception as e:
 # OUTPUT PLAYLIST
 # ============================================================
 
-output = []
-
-output.append(
-    f'#EXTM3U x-tvg-url="{EPG_URL}"'
-)
-
+output = [f'#EXTM3U x-tvg-url="{EPG_URL}"']
 
 for entry in unique:
-
-    output.append(
-        entry["info"]
-    )
-
+    output.append(entry["info"])
     for extra in entry["extras"]:
+        output.append(extra)
+    output.append(entry["stream"])
 
-        output.append(
-            extra
-        )
-
-    output.append(
-        entry["stream"]
-    )
-
-
-OUTPUT.write_text(
-    "\n".join(output) + "\n",
-    encoding="utf-8"
-)
+OUTPUT.write_text("\n".join(output) + "\n", encoding="utf-8")
 
 
 # ============================================================
@@ -592,76 +469,32 @@ national = []
 regional = []
 
 for entry in unique:
+    name_key = normalized_name(entry["name"])
+    chno = get_chno(entry["info"])
 
-    name_key = normalized_name(
-        entry["name"]
-    )
-
-    chno = get_chno(
-        entry["info"]
-    )
-
-    if (
-        name_key in NATIONAL_CHANNELS
-        and chno is not None
-    ):
-
-        national.append(
-            entry
-        )
-
+    if name_key in NATIONAL_CHANNELS and chno is not None:
+        national.append(entry)
     else:
-
-        regional.append(
-            entry
-        )
-
+        regional.append(entry)
 
 print()
 print("==============================================")
 print("PLAYLIST CREATA")
 print("==============================================")
 
-print(
-    f"Totale:              {len(unique)}"
-)
-
-print(
-    f"Nazionali numerati:  {len(national)}"
-)
-
-print(
-    f"Regionali/locali:    {len(regional)}"
-)
-
-print(
-    f"File playlist:        {OUTPUT}"
-)
-
-print(
-    f"File EPG:             {EPG_OUTPUT}"
-)
-
+print(f"Totale:              {len(unique)}")
+print(f"Nazionali numerati:  {len(national)}")
+print(f"Regionali/locali:    {len(regional)}")
+print(f"File playlist:        {OUTPUT}")
+print(f"File EPG:             {EPG_OUTPUT}")
 print("==============================================")
-
 
 print()
 print("PRIMI CANALI:")
 
 for entry in unique[:20]:
-
-    chno = get_chno(
-        entry["info"]
-    )
-
+    chno = get_chno(entry["info"])
     if chno is not None:
-
-        print(
-            f"{chno:g}  {entry['name']}"
-        )
-
+        print(f"{chno:g}  {entry['name']}")
     else:
-
-        print(
-            f"-  {entry['name']}"
-        )
+        print(f"-  {entry['name']}")
