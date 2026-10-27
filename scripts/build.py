@@ -147,6 +147,19 @@ def is_local_or_regional(name):
     return any(m in n for m in markers)
 
 
+def is_sicilian(name, info=""):
+    """True only for channels clearly identified as Sicilian."""
+    text = normalize_text(name + " " + info + " " + get_attr(info, "group-title"))
+    markers = (
+        "sicilia", "siciliana", "siciliano", "palermo", "catania",
+        "messina", "siracusa", "siracusa", "trapani", "ragusa",
+        "enna", "caltanissetta", "agrigento", "taormina", "etna",
+        "canicatti", "marsala", "mazara", "modica", "acireale",
+        "gela", "milazzo", "cefalu", "bagheria", "termini imerese"
+    )
+    return any(marker in text for marker in markers)
+
+
 def is_radio(name):
     # Esclude le radio audio, ma conserva i canali televisivi musicali.
     n = normalized_name(name)
@@ -290,13 +303,17 @@ for entry in entries:
             continue
 
     entry["name"] = name
-    original_chno = get_chno(info)
     number = ordered_local_index(name)
+    # Gli slot 10-19 sono riservati esclusivamente ai canali siciliani.
+    # Gli altri regionali vengono numerati dopo tutti i canali della lista.
     if number == 9999 and is_local_or_regional(name):
-        # Mantieni gli slot locali indicati nella lista (10-19 e 101-105)
-        # se la sorgente li possiede; altrimenti li colloca dopo i nazionali.
-        number = original_chno if original_chno in list(range(10, 20)) + list(range(101, 106)) else 10
-    entry["_sort"] = number
+        entry["_regional"] = True
+        entry["_sicilian"] = is_sicilian(name, info)
+        entry["_sort"] = 10 if entry["_sicilian"] else 181
+    else:
+        entry["_regional"] = False
+        entry["_sicilian"] = False
+        entry["_sort"] = number
     filtered.append(entry)
 
 print(f"Dopo filtro: {len(filtered)}")
@@ -312,8 +329,21 @@ for entry in filtered:
 
 print(f"Dopo dedupe: {len(unique)}")
 
-# Ordina secondo la numerazione della foto. I locali/regionali non numerati
-# vengono in fondo, dopo i canali nazionali.
+# Assegna 10-19 soltanto a un massimo di dieci canali chiaramente siciliani.
+# Nessun altro regionale può occupare questi numeri o alterare la numerazione nazionale.
+sicilian = [e for e in unique if e.get("_regional") and e.get("_sicilian")]
+other_regional = [e for e in unique if e.get("_regional") and not e.get("_sicilian")]
+for idx, entry in enumerate(sorted(sicilian, key=lambda e: normalized_name(e["name"]))):
+    if idx < 10:
+        entry["_sort"] = 10 + idx
+    else:
+        # Eventuali canali siciliani oltre i dieci slot finiscono dopo i nazionali.
+        entry["_sort"] = 181 + idx - 10
+for idx, entry in enumerate(sorted(other_regional, key=lambda e: normalized_name(e["name"]))):
+    entry["_sort"] = 191 + idx
+
+# Mantiene invariata la numerazione nazionale della foto; gli altri regionali
+# sono aggiunti dopo i canali già numerati fino al 180.
 unique.sort(key=lambda e: (e.get("_sort", 9999), normalized_name(e["name"])))
 
 # Non controlliamo ogni singolo URL: molti server IPTV non rispondono
