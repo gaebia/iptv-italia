@@ -148,17 +148,21 @@ def is_local_or_regional(name):
 
 
 def is_radio(name):
+    # Esclude le radio audio, ma conserva i canali televisivi musicali.
     n = normalized_name(name)
-    return "radio" in n or n.startswith("radio ")
+    if "radio italia tv" in n or "radio kiss kiss tv" in n:
+        return False
+    return "radio" in n
 
 
 def is_cartoon(name):
     n = normalized_name(name)
     markers = (
         "boing", "cartoonito", "cartoon", "disney", "nickelodeon",
-        "baby tv", "k2", "frisbee", "super!", "super"
+        "baby tv", "k2", "frisbee", "super!",
+        "rai gulp", "rai yoyo", "rai yo yo"
     )
-    return any(m in n for m in markers)
+    return n == "super" or any(normalized_name(m) in n for m in markers)
 
 
 def is_italian(info, name):
@@ -191,66 +195,66 @@ def is_bad_stream(info, stream):
     return any(x in s for x in bad)
 
 
+CHANNEL_NUMBERS = {
+    "rai 1": 1, "rai 2": 2, "rai 3": 3, "rete 4": 4, "rete 4 hd": 4,
+    "rete4": 4, "canale 5": 5, "canale 5 hd": 5, "canale5": 5,
+    "italia 1": 6, "italia1": 6, "la7": 7, "tv8": 8, "nove": 9,
+    "20 mediaset": 20, "rai 4": 21, "iris": 22, "rai 5": 23,
+    "rai movie": 24, "rai premium": 25, "cielo": 26,
+    "paramount network": 27, "tv 2000": 28, "tv2000": 28, "la7d": 29,
+    "la5": 30, "real time": 31, "qvc": 32, "food network": 33,
+    "cine 34": 34, "cine34": 34, "focus": 35, "rtl 102 5 tv": 36,
+    "rtl 102 5": 36, "hse 24": 37, "giallo": 38, "top crime": 39,
+    "rai news": 48, "rai news 24": 48, "sky tg24": 50,
+    "mediaset tgcom24": 51, "tgcom24": 51, "dmax": 52,
+    "italia 53": 53, "rai storia": 54, "mediaset extra": 55,
+    "motor trend": 56, "rai sport hd": 57, "rai sport": 58,
+    "motor trend italia": 59, "sportitalia": 60, "sportitalia plus": 60,
+    "life 120 channel": 61, "donna sport tv": 62, "zelig sport": 63,
+    "super tennis": 64, "supertennis": 64, "canale 65": 65,
+    "italia 2": 66, "vh1": 67, "ibox it": 68, "deejay tv": 69,
+    "radio italia tv": 70, "radio kiss kiss tv": 158, "svizzera italiana 82": 82,
+    "canale italia 83": 83, "canale italia 84": 84,
+    "test hevc main10": 100, "mtv": 108, "retecapri": 122,
+    "rete capri": 122, "italia channel": 123, "arte italia 124": 124,
+    "arte italia": 124, "arte italia 125": 125, "gold tv italia": 128,
+    "la4 italia": 129, "channel 24": 130, "retetalia": 131,
+    "lineagem": 132, "juwelo": 133, "italia 134": 134, "italia 135": 135,
+    "italia 136": 136, "hse donna": 137, "air italia": 138,
+    "deluxe 139": 139, "linea italia": 140, "italia 141": 141,
+    "italia 142": 142, "italia 143": 143, "orler tv": 144,
+    "padre pio tv": 145, "rai scuola": 146, "fire tv": 147,
+    "italia 148 telesia tv": 148, "telesia tv": 148, "capri casino": 149,
+    "italia 150": 150, "mondo calcio": 152, "tv 153": 153,
+    "italia 154": 154, "italia 156": 156, "italia 159": 159,
+    "italia 160": 160, "cantando ballando": 161, "canale 162": 162,
+    "donna shopping": 163, "shopping italia": 164, "canale 165": 165,
+    "mediatext it": 166, "ri01 tv": 167, "tele moda": 168,
+    "italia tv 3": 170, "odeon 24": 177, "italia tv 2": 179,
+    "tg norba 24": 180,
+}
+
+
 def ordered_local_index(name):
     n = normalized_name(name)
-
-    mapping = {
-        "rai 1": 1,
-        "rai 2": 2,
-        "rai 3": 3,
-        "rete 4 hd": 4,
-        "canale 5 hd": 5,
-        "italia 1": 6,
-        "la7": 7,
-        "tv8": 8,
-        "nove": 9,
-        "20 mediaset": 20,
-        "rai 4": 21,
-        "iris": 22,
-        "rai 5": 23,
-        "rai movie": 24,
-        "rai premium": 25,
-        "cielo": 26,
-        "paramount network": 27,
-        "tv 2000": 28,
-        "la7d": 29,
-        "la5": 30,
-        "real time": 31,
-        "qvc": 32,
-        "food network": 33,
-        "cine 34": 34,
-        "focus": 35,
-        "rtl 102.5 tv": 36,
-        "hse 24": 37,
-        "giallo": 38,
-        "top crime": 39,
-        "rai news": 48,
-        "sky tg24": 50,
-        "mediaset tgcom24": 51,
-        "dmax": 52,
-        "rai storia": 54,
-        "sportitalia": 60,
-        "canale 65": 65,
-        "italia 2": 66,
-        "vh1": 67,
-        "deejay tv": 69,
-        "radio italia tv": 70,
-        "svizzera italiana 82": 82,
-        "canale italia 83": 83,
-        "canale italia 84": 84,
+    if n in CHANNEL_NUMBERS:
+        return CHANNEL_NUMBERS[n]
+    aliases = {
+        "rtl 102 5 tv": 36, "rtl 102 5": 36, "rete 4 fhd": 4,
+        "canale 5 fhd": 5, "20 mediaset hd": 20,
+        "rai sport hd": 57, "mediaset tgcom 24": 51,
+        "ibox it": 68, "italia tv3": 170, "italia tv2": 179,
     }
-    return mapping.get(n, 9999)
+    if n in aliases:
+        return aliases[n]
+    for suffix in (" hd", " fhd", " 4k"):
+        if n.endswith(suffix) and n[:-len(suffix)].strip() in CHANNEL_NUMBERS:
+            return CHANNEL_NUMBERS[n[:-len(suffix)].strip()]
+    return 9999
 
 
 def channel_sort_key(entry):
-    info = entry["info"]
-    name = entry["name"]
-
-    chno = get_chno(info)
-    if chno is None:
-        chno = ordered_local_index(name)
-
-    return (0, chno, normalized_name(name))
+    return (entry.get("_sort", 9999), normalized_name(entry["name"]))
 
 
 print("==============================================")
@@ -286,6 +290,13 @@ for entry in entries:
             continue
 
     entry["name"] = name
+    original_chno = get_chno(info)
+    number = ordered_local_index(name)
+    if number == 9999 and is_local_or_regional(name):
+        # Mantieni gli slot locali indicati nella lista (10-19 e 101-105)
+        # se la sorgente li possiede; altrimenti li colloca dopo i nazionali.
+        number = original_chno if original_chno in list(range(10, 20)) + list(range(101, 106)) else 10
+    entry["_sort"] = number
     filtered.append(entry)
 
 print(f"Dopo filtro: {len(filtered)}")
@@ -300,6 +311,10 @@ for entry in filtered:
     unique.append(entry)
 
 print(f"Dopo dedupe: {len(unique)}")
+
+# Ordina secondo la numerazione della foto. I locali/regionali non numerati
+# vengono in fondo, dopo i canali nazionali.
+unique.sort(key=lambda e: (e.get("_sort", 9999), normalized_name(e["name"])))
 
 # Non controlliamo ogni singolo URL: molti server IPTV non rispondono
 # alle richieste HEAD e questo può rallentare o bloccare l'aggiornamento.
@@ -327,18 +342,16 @@ output_lines = [f'#EXTM3U x-tvg-url="{EPG_URL}"']
 for entry in unique:
     info = entry["info"]
     name = entry["name"]
-    chno = get_chno(info)
-    if chno is None:
-        chno = ordered_local_index(name)
-
-    if 'tvg-chno=' not in info.lower():
-        pos = info.find('tvg-name=')
-        if pos != -1:
-            end = info.find('",', pos)
-            if end != -1:
-                prefix = info[:end + 2]
-                suffix = info[end + 2:]
-                info = f'{prefix} tvg-chno="{chno}"{suffix}'
+    chno = entry.get("_sort", ordered_local_index(name))
+    if chno == 9999:
+        chno = get_chno(info) or 9999
+    # Sovrascrive tvg-chno esistente: la numerazione deve seguire la foto.
+    if re.search(r'(?i)\btvg-chno="[^"]*"', info):
+        info = re.sub(r'(?i)\btvg-chno="[^"]*"', f'tvg-chno="{chno}"', info, count=1)
+    else:
+        comma = info.find(",")
+        if comma != -1:
+            info = info[:comma] + f' tvg-chno="{chno}"' + info[comma:]
 
     output_lines.append(info)
     for extra in entry.get("extras", []):
