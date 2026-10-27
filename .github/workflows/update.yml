@@ -2,10 +2,8 @@ name: Aggiorna IPTV Italia
 
 on:
   workflow_dispatch:
-
   schedule:
     - cron: "0 4 * * *"
-
   push:
     paths:
       - "scripts/build.py"
