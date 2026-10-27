@@ -43,7 +43,7 @@ def stream_is_alive(url):
         urllib.request.Request(
             url,
             headers={**HEADERS, "Range": "bytes=0-0"},
-            method="GET"
+            method="GET",
         ),
     ]
 
@@ -69,8 +69,8 @@ def stream_is_alive(url):
 def parse_m3u(text):
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     entries = []
-    i = 0
 
+    i = 0
     while i < len(lines):
         if not lines[i].startswith("#EXTINF"):
             i += 1
@@ -91,7 +91,7 @@ def parse_m3u(text):
                 entries.append({
                     "info": info,
                     "extras": extras,
-                    "stream": stream
+                    "stream": stream,
                 })
 
         i = j + 1
@@ -100,7 +100,7 @@ def parse_m3u(text):
 
 
 # ============================================================
-# NORMALIZZAZIONE
+# NORMALIZZAZIONE / ATTRIBUTI
 # ============================================================
 
 def normalize_text(value):
@@ -112,14 +112,6 @@ def normalize_text(value):
     value = re.sub(r"[^a-z0-9\s]+", " ", value)
     value = re.sub(r"\s+", " ", value).strip()
     return value
-
-
-def normalized_name(name):
-    value = name.lower().strip()
-    for symbol in ["ⓖ", "Ⓖ", "Ⓢ", "Ⓣ", "Ⓨ"]:
-        value = value.replace(symbol, "")
-    value = re.sub(r"\s+", " ", value)
-    return value.strip()
 
 
 def get_attr(info, name):
@@ -145,24 +137,17 @@ def get_chno(info):
         return None
 
 
+def normalized_name(name):
+    value = name.lower().strip()
+    for symbol in ["ⓖ", "Ⓖ", "Ⓢ", "Ⓣ", "Ⓨ"]:
+        value = value.replace(symbol, "")
+    value = re.sub(r"\s+", " ", value)
+    return value.strip()
+
+
 # ============================================================
-# FILTRI MESSI A POSTO
+# FILTRO ITALIANO
 # ============================================================
-
-def is_radio_channel(name):
-    value = normalize_text(name)
-    return "radio" in value or value.startswith("radio ")
-
-
-def is_cartoon_channel(name):
-    value = normalize_text(name)
-    cartoon_markers = (
-        "boing", "cartoonito", "cartoon", "disney",
-        "nickelodeon", "baby tv", "k2", "frisbee",
-        "super!", "super", "yoyo", "gulp", "gioco"
-    )
-    return any(marker in value for marker in cartoon_markers)
-
 
 def is_italian(info):
     country = normalize_text(get_attr(info, "tvg-country"))
@@ -220,56 +205,102 @@ def is_bad_stream(info, stream):
 
 
 # ============================================================
-# WHITELIST CANALI AMMESSI
+# WHITELIST ESATTA: CANALI AMMESSI
 # ============================================================
 
-ALLOWED_TOKENS = (
-    "rai",
-    "mediaset",
-    "sky",
-    "sicilia",
-    "sole 24 ore",
-    "7 gold",
+EXACT_ALLOWED = {
+    # Rai
+    "rai 1",
+    "rai 2",
+    "rai 3",
+    "rai 4",
+    "rai 5",
+    "rai movie",
+    "rai premium",
+    "rai sport",
+    "rai sport 1",
+    "rai sport 2",
+    "rai news 24",
+    "rai storia",
+    "rai scuola",
+    "rai gulp",
+    "rai yoyo",
+    "rai italia",
+    "rai 1 hd",
+    "rai 2 hd",
+    "rai 3 hd",
+    "rai 4 hd",
+    "rai 5 hd",
+
+    # Mediaset / principali
     "rete 4",
     "canale 5",
     "italia 1",
     "italia 2",
-    "la7",
+    "20",
+    "20 mediaset",
+    "iris",
     "tv8",
     "nove",
-    "20",
+    "la7",
+    "la7d",
+    "la7 cinema",
     "dmax",
-    "sportitalia",
-    "rai sport",
-    "rai news",
-    "tgcom",
-    "tg24",
-    "sky tg24",
-    "top crime",
-    "giallo",
     "focus",
     "real time",
+    "giallo",
+    "top crime",
     "qvc",
     "food network",
-    "discovery channel",
     "rtl 102.5",
+    "discovery channel",
+    "sportitalia",
+    "sportitalia plus",
+    "sportitalia solocalcio",
+    "supertennis",
+    "tgcom24",
+    "tgcom 24",
+    "sky tg24",
+    "deejay tv",
+    "r101 tv",
+    "radio 105 tv",
     "gambero rosso",
     "hgtv",
     "home & garden tv",
-    "supertennis",
     "senato tv",
     "camera dei deputati",
-    "la7d",
-    "fox",
-    "fox crime",
-    "fox life",
-    "fox comedy",
-    "mtv",
-    "paramount network",
-    "inspiration tv"
-)
 
-BLOCKLIST = (
+    # Sky / nazionali
+    "sky tg24",
+    "sky sport 24",
+    "sky sport arena",
+    "sky sport football",
+    "sky sport series",
+    "sky cinema uno",
+    "sky cinema due",
+    "sky cinema family",
+
+    # Sicilia
+    "telecolor",
+    "sicilia mia",
+    "sicilia television",
+    "canale 10",
+    "canale 15",
+    "canale 21",
+    "san marino rete televisiva",
+    "telesud",
+    "tv sicilia",
+    "sun tv",
+    "sicilia tv",
+    "telepace sicilia",
+
+    # Extra richiesti
+    "sole 24 ore",
+    "7 gold",
+    "7 gold hd",
+}
+
+BLOCKLIST = {
     "boing",
     "cartoonito",
     "cartoon",
@@ -278,49 +309,34 @@ BLOCKLIST = (
     "baby tv",
     "k2",
     "frisbee",
-    "rai yoyo",
-    "rai gulp",
     "super!",
     "radio",
     "radio italia",
     "radio 105",
     "r101",
+    "radio monte carlo",
     "deejay radio",
-    "news radio",
     "kiss kiss",
     "m2o",
-    "radio monte carlo"
-)
+    "rai yoyo",
+    "rai gulp",
+}
 
 def is_allowed_channel(name):
     value = normalized_name(name)
 
-    if any(block in value for block in BLOCKLIST):
+    if value in BLOCKLIST:
         return False
 
-    if "radio" in value or value.startswith("radio "):
-        return False
-
-    if any(token in value for token in ALLOWED_TOKENS):
+    if value in EXACT_ALLOWED:
         return True
 
     return False
 
 
 # ============================================================
-# ORDINE CANALI
+# CANALI NAZIONALI / ORDINAMENTO
 # ============================================================
-
-def channel_sort_key(entry):
-    name = entry["name"]
-    chno = get_chno(entry["info"])
-    name_key = normalized_name(name)
-
-    if name_key in NATIONAL_CHANNELS and chno is not None:
-        return (0, chno, name_key)
-
-    return (1, 999999, name_key)
-
 
 NATIONAL_CHANNELS = {
     "rai 1", "rai 2", "rai 3",
@@ -334,19 +350,27 @@ NATIONAL_CHANNELS = {
     "real time", "qvc", "food network", "cine34", "focus",
     "rtl 102.5", "discovery channel",
     "giallo", "top crime",
-    "rai gulp", "rai yoyo", "cartoonito", "super!",
     "italia 2", "mediaset extra",
     "rai news 24", "tgcom24", "tgcom 24",
     "dmax",
     "rai storia", "rai scuola", "rai sport",
     "sportitalia", "sportitalia plus", "sportitalia solocalcio",
-    "supertennis", "super t ennis",
+    "supertennis",
     "sky tg24",
-    "hgtv", "home & garden tv",
     "gambero rosso",
     "senato tv", "camera dei deputati",
-    "sole 24 ore", "7 gold"
+    "sole 24 ore", "7 gold",
 }
+
+def channel_sort_key(entry):
+    name = entry["name"]
+    chno = get_chno(entry["info"])
+    name_key = normalized_name(name)
+
+    if name_key in NATIONAL_CHANNELS and chno is not None:
+        return (0, chno, name_key)
+
+    return (1, 999999, name_key)
 
 
 # ============================================================
