@@ -19,17 +19,18 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 IPTV-Italia-Updater"
 }
 
-# ============================================================
-# DOWNLOAD
-# ============================================================
 
 def download(url, timeout=25):
+    """Scarica un URL con User-Agent e timeout esplicito."""
     req = urllib.request.Request(url, headers=HEADERS)
     with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
 
 
 def stream_is_alive(url):
+    """Verifica un flusso con richieste brevi. Non usata nella build:
+    evitare un controllo lento di ogni singolo canale.
+    """
     if not url:
         return False
 
@@ -59,10 +60,6 @@ def stream_is_alive(url):
 
     return False
 
-
-# ============================================================
-# PARSER
-# ============================================================
 
 def parse_m3u(text):
     lines = [line.strip() for line in text.splitlines() if line.strip()]
@@ -96,10 +93,6 @@ def parse_m3u(text):
 
     return entries
 
-
-# ============================================================
-# TEXT HELPERS
-# ============================================================
 
 def normalize_text(value):
     if value is None:
@@ -141,10 +134,6 @@ def normalized_name(name):
     value = re.sub(r"\s+", " ", value)
     return value.strip()
 
-
-# ============================================================
-# FILTRI
-# ============================================================
 
 def is_local_or_regional(name):
     n = normalized_name(name)
@@ -201,10 +190,6 @@ def is_bad_stream(info, stream):
     )
     return any(x in s for x in bad)
 
-
-# ============================================================
-# ORDINAMENTO
-# ============================================================
 
 def ordered_local_index(name):
     n = normalized_name(name)
@@ -268,10 +253,6 @@ def channel_sort_key(entry):
     return (0, chno, normalized_name(name))
 
 
-# ============================================================
-# MAIN
-# ============================================================
-
 print("==============================================")
 print("DOWNLOAD PLAYLIST")
 print("==============================================")
@@ -309,7 +290,6 @@ for entry in entries:
 
 print(f"Dopo filtro: {len(filtered)}")
 
-# dedupe
 unique = []
 seen = set()
 for entry in filtered:
@@ -321,27 +301,9 @@ for entry in filtered:
 
 print(f"Dopo dedupe: {len(unique)}")
 
-# valid stream
-valid = []
-for entry in unique:
-    if stream_is_alive(entry["stream"]):
-        valid.append(entry)
-
-unique = valid
-print(f"Dopo validazione stream: {len(unique)}")
-
-for entry in unique:
-    chno = get_chno(entry["info"])
-    if chno is None:
-        entry["_sort"] = ordered_local_index(entry["name"])
-    else:
-        entry["_sort"] = chno
-
-unique.sort(key=lambda e: (0, e["_sort"], normalized_name(e["name"])))
-
-# ============================================================
-# EPG - NON BLOCCA IL WORKFLOW
-# ============================================================
+# Non controlliamo ogni singolo URL: molti server IPTV non rispondono
+# alle richieste HEAD e questo può rallentare o bloccare l'aggiornamento.
+print(f"Canali selezionati: {len(unique)}")
 
 print()
 print("==============================================")
@@ -351,16 +313,14 @@ print("==============================================")
 try:
     epg_data = download(EPG_SOURCE, timeout=15)
     epg_xml = gzip.decompress(epg_data).decode("utf-8", errors="replace")
+    if not epg_xml.lstrip().startswith("<?xml") and "<tv" not in epg_xml[:500]:
+        raise ValueError("Il file scaricato non sembra un XMLTV valido")
     EPG_OUTPUT.write_text(epg_xml, encoding="utf-8")
     print("EPG scaricato correttamente")
 except Exception as e:
     print(f"EPG non disponibile: {e}")
-    EPG_OUTPUT.write_text("<tv></tv>", encoding="utf-8")
+    EPG_OUTPUT.write_text('<?xml version="1.0" encoding="UTF-8"?>\n<tv></tv>\n', encoding="utf-8")
     print("EPG vuoto scritto, workflow continua")
-
-# ============================================================
-# OUTPUT
-# ============================================================
 
 output_lines = [f'#EXTM3U x-tvg-url="{EPG_URL}"']
 
