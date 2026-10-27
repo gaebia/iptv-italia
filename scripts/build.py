@@ -25,16 +25,8 @@ HEADERS = {
 # ============================================================
 
 def download(url):
-    request = urllib.request.Request(
-        url,
-        headers=HEADERS
-    )
-
-    with urllib.request.urlopen(
-        request,
-        timeout=120
-    ) as response:
-
+    request = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(request, timeout=120) as response:
         return response.read()
 
 
@@ -75,7 +67,6 @@ def stream_is_alive(url):
 # ============================================================
 
 def parse_m3u(text):
-
     lines = [
         line.strip()
         for line in text.splitlines()
@@ -83,36 +74,25 @@ def parse_m3u(text):
     ]
 
     entries = []
-
     i = 0
 
     while i < len(lines):
-
         if not lines[i].startswith("#EXTINF"):
             i += 1
             continue
 
         info = lines[i]
-
         extras = []
-
         j = i + 1
 
         while j < len(lines) and lines[j].startswith("#"):
-
             if lines[j].startswith("#EXTVLCOPT"):
                 extras.append(lines[j])
-
             j += 1
 
         if j < len(lines):
-
             stream = lines[j]
-
-            if stream.startswith(
-                ("http://", "https://")
-            ):
-
+            if stream.startswith(("http://", "https://")):
                 entries.append({
                     "info": info,
                     "extras": extras,
@@ -145,26 +125,21 @@ def get_attr(info, name):
         info,
         re.IGNORECASE
     )
-
     if match:
         return match.group(1).strip()
-
     return ""
 
 
 def get_channel_name(info):
     if "," not in info:
         return ""
-
     return info.split(",", 1)[1].strip()
 
 
 def get_chno(info):
     value = get_attr(info, "tvg-chno")
-
     if not value:
         return None
-
     try:
         return float(value)
     except ValueError:
@@ -173,22 +148,14 @@ def get_chno(info):
 
 def normalized_name(name):
     value = name.lower().strip()
-
-    for symbol in [
-        "ⓖ",
-        "Ⓖ",
-        "Ⓢ",
-        "Ⓣ",
-        "Ⓨ"
-    ]:
+    for symbol in ["ⓖ", "Ⓖ", "Ⓢ", "Ⓣ", "Ⓨ"]:
         value = value.replace(symbol, "")
-
     value = re.sub(r"\s+", " ", value)
     return value.strip()
 
 
 # ============================================================
-# FILTRO ITALIA ROBUSTO
+# FILTRO ITALIA / CANALI ESCLUSI
 # ============================================================
 
 def is_italian(info):
@@ -197,95 +164,85 @@ def is_italian(info):
     name = normalize_text(get_attr(info, "tvg-name"))
     channel_name = normalize_text(get_channel_name(info))
 
-    combined = " ".join(
-        part for part in (country, group, name, channel_name) if part
-    )
-
+    combined = " ".join(part for part in (country, group, name, channel_name) if part)
     if not combined:
         return False
 
     if country in {"it", "italy", "italia"}:
         return True
-
     if group in {"italy", "italia"}:
         return True
 
     italian_markers = (
-        "italy",
-        "italia",
-        "rai",
-        "mediaset",
-        "sky",
-        "tv8",
-        "cielo",
-        "canale",
-        "dmax",
-        "sportitalia",
-        "deejay",
-        "rtl",
-        "giallo",
-        "boing",
-        "focus",
-        "tgcom",
-        "tg24",
-        "top crime",
-        "super",
-        "cartoonito",
-        "rai news",
-        "rai sport",
-        "italia 1",
-        "italia 2",
-        "tv 2000",
+        "italy", "italia", "rai", "mediaset", "sky", "tv8", "cielo",
+        "canale", "dmax", "sportitalia", "deejay", "rtl", "giallo",
+        "focus", "tgcom", "tg24", "top crime", "super", "cartoonito",
+        "rai news", "rai sport", "italia 1", "italia 2", "tv 2000",
+        "sicilia", "regione", "lazio", "campania", "veneto", "emilia",
+        "liguria", "piemonte", "toscana", "sole 24 ore", "7 gold"
     )
 
     if any(marker in combined for marker in italian_markers):
         return True
 
-    if re.search(r"\b(rai|mediaset|sky|canale|italia|tv8|cielo)\b", combined):
+    if re.search(r"\b(rai|mediaset|sky|canale|italia|tv8|cielo|sicilia)\b", combined):
         if re.search(r"\b\d+\b", combined) or re.search(r"\b(ch|tv|hd|it)\b", combined):
             return True
 
     return False
 
 
-def is_national_italian_channel(info, name):
-    name_key = normalized_name(name)
-    if name_key not in NATIONAL_CHANNELS:
+def is_radio_channel(name):
+    value = normalize_text(name)
+    return "radio" in value or value.startswith("radio ")
+
+
+def is_cartoon_channel(name):
+    value = normalize_text(name)
+    cartoon_markers = (
+        "boing", "cartoonito", "cartoon", "disney", "nickelodeon",
+        "baby tv", "k2", "super!", "frisbee"
+    )
+    return any(marker in value for marker in cartoon_markers)
+
+
+def is_good_italian_channel(info, name):
+    value = normalized_name(name)
+
+    if is_radio_channel(value):
         return False
 
-    chno = get_chno(info)
-    if chno is None:
+    if is_cartoon_channel(value):
         return False
 
-    country = normalize_text(get_attr(info, "tvg-country"))
-    if country and country not in {"it", "italy", "italia"}:
-        return False
+    if "sicilia" in value:
+        return True
 
-    return True
+    if "sole 24 ore" in value or "7 gold" in value:
+        return True
 
+    if get_chno(info) is not None:
+        return True
 
-# ============================================================
-# STREAM DA ESCLUDERE
-# ============================================================
+    if value in NATIONAL_CHANNELS:
+        return True
+
+    return False
+
 
 def is_bad_stream(info, stream):
     text = (info + " " + stream).lower()
 
     if "[geo-blocked]" in text:
         return True
-
     if "[not 24/7]" in text:
         return True
-
     if "geo blocked" in text:
         return True
-
     if "youtube.com" in stream.lower():
         return True
-
     if "youtu.be" in stream.lower():
         return True
-
     if "twitch.tv" in stream.lower():
         return True
 
@@ -293,97 +250,46 @@ def is_bad_stream(info, stream):
 
 
 # ============================================================
-# CANALI NAZIONALI
+# CANALI NAZIONALI / PRIVATI ITALIANI
 # ============================================================
 
 NATIONAL_CHANNELS = {
-    "rai 1",
-    "rai 2",
-    "rai 3",
-
-    "rete 4",
-    "canale 5",
-    "italia 1",
-
-    "la7",
-    "tv8",
-    "nove",
-
-    "20",
-    "20 mediaset",
-
-    "rai 4",
-    "iris",
-    "rai 5",
-    "rai movie",
-    "rai premium",
-    "cielo",
+    "rai 1", "rai 2", "rai 3",
+    "rete 4", "canale 5", "italia 1",
+    "la7", "tv8", "nove",
+    "20", "20 mediaset",
+    "rai 4", "iris", "rai 5", "rai movie", "rai premium", "cielo",
     "27 twentyseven",
-
-    "tv2000",
-    "tv 2000",
-
-    "la7 cinema",
-    "la 5",
-    "la5",
-
-    "real time",
-    "qvc",
-    "food network",
-    "cine34",
-    "focus",
-    "rtl 102.5",
-    "discovery channel",
-
-    "giallo",
-    "top crime",
-    "boing",
-
-    "rai gulp",
-    "rai yoyo",
-    "cartoonito",
-    "super!",
-
-    "italia 2",
-    "mediaset extra",
-
-    "rai news 24",
-    "tgcom24",
-    "tgcom 24",
-
+    "tv2000", "tv 2000",
+    "la7 cinema", "la 5", "la5",
+    "real time", "qvc", "food network", "cine34", "focus",
+    "rtl 102.5", "discovery channel",
+    "giallo", "top crime",
+    "rai gulp", "rai yoyo", "cartoonito", "super!",
+    "italia 2", "mediaset extra",
+    "rai news 24", "tgcom24", "tgcom 24",
     "dmax",
-
-    "rai storia",
-    "rai scuola",
-    "rai sport",
-
-    "sportitalia",
-    "sportitalia plus",
-    "sportitalia solocalcio",
-
-    "supertennis",
-    "super t ennis",
-
+    "rai storia", "rai scuola", "rai sport",
+    "sportitalia", "sportitalia plus", "sportitalia solocalcio",
+    "supertennis", "super t ennis",
     "sky tg24",
-
-    "hgtv",
-    "home & garden tv",
-
+    "hgtv", "home & garden tv",
     "gambero rosso",
-
-    "radio italia tv",
-    "deejay tv",
-    "r101 tv",
-    "radio 105 tv",
-
-    "senato tv",
-    "camera dei deputati",
+    "radio italia tv", "deejay tv", "r101 tv", "radio 105 tv",
+    "senato tv", "camera dei deputati",
+    "sole 24 ore", "7 gold",
+    "la7d", "la7d hd",
+    "top crime", "giallo",
+    "media set", "mediaset",
+    "fox", "fox crime", "fox life", "fox comedy",
+    "mtv", "paramount network",
+    "inspiration tv", "uni",
+    "fine living", "real time", "frisbee",
+    "euronews", "sky tg24",
+    "ms", "mediaset extra",
+    "k2", "nove", "it", "itv"
 }
 
-
-# ============================================================
-# ORDINE
-# ============================================================
 
 def channel_sort_key(entry):
     name = entry["name"]
@@ -416,7 +322,7 @@ print(f"Entry ricevute: {len(entries)}")
 # FILTRO ITALIA
 # ============================================================
 
-italian = []
+filtered = []
 
 for entry in entries:
     info = entry["info"]
@@ -432,10 +338,13 @@ for entry in entries:
     if not name:
         continue
 
-    entry["name"] = name
-    italian.append(entry)
+    if not is_good_italian_channel(info, name):
+        continue
 
-print(f"Canali italiani: {len(italian)}")
+    entry["name"] = name
+    filtered.append(entry)
+
+print(f"Canali italiani ammessi: {len(filtered)}")
 
 
 # ============================================================
@@ -446,7 +355,7 @@ unique = []
 seen_ids = set()
 seen_names = set()
 
-for entry in italian:
+for entry in filtered:
     info = entry["info"]
     tvg_id = get_attr(info, "tvg-id")
     name_key = normalized_name(entry["name"])
@@ -485,19 +394,6 @@ print(f"Canali dopo validazione stream: {len(unique)} (rimossi {removed})")
 
 
 # ============================================================
-# SOLO CANALI NAZIONALI ITALIANI NUMERATI
-# ============================================================
-
-national_only = []
-for entry in unique:
-    if is_national_italian_channel(entry["info"], entry["name"]):
-        national_only.append(entry)
-
-unique = national_only
-print(f"Canali nazionali italiani numerati: {len(unique)}")
-
-
-# ============================================================
 # ORDINAMENTO
 # ============================================================
 
@@ -517,10 +413,8 @@ try:
     epg_gz = download(EPG_SOURCE)
     epg_xml = gzip.decompress(epg_gz).decode("utf-8", errors="replace")
     EPG_OUTPUT.write_text(epg_xml, encoding="utf-8")
-
     print(f"EPG creato: {EPG_OUTPUT}")
     print(f"Dimensione EPG: {len(epg_xml):,} caratteri")
-
 except Exception as e:
     print(f"ERRORE EPG: {e}")
     raise
