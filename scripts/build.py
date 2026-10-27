@@ -53,8 +53,9 @@ def stream_is_alive(url):
                 code = getattr(response, "status", 200)
                 if 200 <= code < 400:
                     return True
-        except urllib.error.HTTPError:
-            continue
+        except urllib.error.HTTPError as exc:
+            if exc.code in {403, 404, 410, 451, 500, 502, 503, 504}:
+                continue
         except Exception:
             continue
 
@@ -77,8 +78,8 @@ def parse_m3u(text):
 
         info = lines[i]
         extras = []
-        j = i + 1
 
+        j = i + 1
         while j < len(lines) and lines[j].startswith("#"):
             if lines[j].startswith("#EXTVLCOPT"):
                 extras.append(lines[j])
@@ -90,7 +91,7 @@ def parse_m3u(text):
                 entries.append({
                     "info": info,
                     "extras": extras,
-                    "stream": stream
+                    "stream": stream,
                 })
 
         i = j + 1
@@ -99,7 +100,7 @@ def parse_m3u(text):
 
 
 # ============================================================
-# NORMALIZZAZIONE E ATTRIBUTI
+# NORMALIZZAZIONE / ATTRIBUTI
 # ============================================================
 
 def normalize_text(value):
@@ -145,42 +146,8 @@ def normalized_name(name):
 
 
 # ============================================================
-# FILTRI ITALIANI E BLOCCATI
+# FILTRO ITALIANO
 # ============================================================
-
-ITALIAN_MARKERS = (
-    "italy", "italia", "rai", "mediaset", "sky", "tv8", "cielo",
-    "canale", "dmax", "sportitalia", "deejay", "rtl", "giallo",
-    "focus", "tgcom", "tg24", "top crime", "rai news", "rai sport",
-    "italia 1", "italia 2", "tv 2000", "sicilia", "lazio", "campania",
-    "veneto", "emilia", "liguria", "piemonte", "toscana", "regione",
-    "umbria", "marche", "friuli", "calabria", "puglia", "basilicata",
-    "trentino", "veneto", "abruzzo", "sardegna", "lombardia", "emilia romagna",
-    "rete 4", "canale 5", "la7", "nove", "real time", "qvc", "food network",
-    "paramount", "fox", "mtv", "euronews", "telecolor", "deejay"
-)
-
-BLOCKED_PATTERNS = (
-    "radio",
-    "radiotv",
-    "radio italia",
-    "radio 105",
-    "r101",
-    "deejay radio",
-    "kiss kiss",
-    "m2o",
-    "boing",
-    "cartoonito",
-    "cartoon",
-    "disney",
-    "nickelodeon",
-    "baby tv",
-    "k2",
-    "frisbee",
-    "super!",
-    "yoyo",
-    "gulp"
-)
 
 def is_italian(info):
     country = normalize_text(get_attr(info, "tvg-country"))
@@ -198,30 +165,21 @@ def is_italian(info):
     if group in {"italy", "italia"}:
         return True
 
-    if any(marker in combined for marker in ITALIAN_MARKERS):
+    italian_markers = (
+        "italy", "italia", "rai", "mediaset", "sky", "tv8", "cielo",
+        "canale", "dmax", "sportitalia", "deejay", "rtl", "giallo",
+        "focus", "tgcom", "tg24", "top crime", "rai news", "rai sport",
+        "italia 1", "italia 2", "tv 2000", "sicilia", "lazio", "campania",
+        "veneto", "emilia", "liguria", "piemonte", "toscana", "sole 24 ore",
+        "7 gold"
+    )
+
+    if any(marker in combined for marker in italian_markers):
         return True
 
     if re.search(r"\b(rai|mediaset|sky|canale|italia|tv8|cielo|sicilia)\b", combined):
         if re.search(r"\b\d+\b", combined) or re.search(r"\b(ch|tv|hd|it)\b", combined):
             return True
-
-    return False
-
-
-def is_blocked_name(name):
-    value = normalized_name(name)
-
-    if any(p in value for p in BLOCKED_PATTERNS):
-        return True
-
-    if "radio" in value:
-        return True
-
-    if "youtube" in value:
-        return True
-
-    if "twitch" in value:
-        return True
 
     return False
 
@@ -241,19 +199,174 @@ def is_bad_stream(info, stream):
         return True
     if "twitch.tv" in stream.lower():
         return True
+
     return False
 
 
 # ============================================================
-# ORDINE CANALI
+# WHITELIST ESATTA: CANALI AMMESSI
 # ============================================================
+
+EXACT_ALLOWED = {
+    # Rai
+    "rai 1",
+    "rai 2",
+    "rai 3",
+    "rai 4",
+    "rai 5",
+    "rai movie",
+    "rai premium",
+    "rai sport",
+    "rai sport 1",
+    "rai sport 2",
+    "rai news 24",
+    "rai storia",
+    "rai scuola",
+    "rai gulp",
+    "rai yoyo",
+    "rai italia",
+    "rai 1 hd",
+    "rai 2 hd",
+    "rai 3 hd",
+    "rai 4 hd",
+    "rai 5 hd",
+
+    # Mediaset / principali
+    "rete 4",
+    "canale 5",
+    "italia 1",
+    "italia 2",
+    "20",
+    "20 mediaset",
+    "iris",
+    "tv8",
+    "nove",
+    "la7",
+    "la7d",
+    "la7 cinema",
+    "dmax",
+    "focus",
+    "real time",
+    "giallo",
+    "top crime",
+    "qvc",
+    "food network",
+    "rtl 102.5",
+    "discovery channel",
+    "sportitalia",
+    "sportitalia plus",
+    "sportitalia solocalcio",
+    "supertennis",
+    "tgcom24",
+    "tgcom 24",
+    "sky tg24",
+    "deejay tv",
+    "r101 tv",
+    "radio 105 tv",
+    "gambero rosso",
+    "hgtv",
+    "home & garden tv",
+    "senato tv",
+    "camera dei deputati",
+
+    # Sky
+    "sky tg24",
+    "sky sport 24",
+    "sky sport arena",
+    "sky sport football",
+    "sky sport series",
+    "sky cinema uno",
+    "sky cinema due",
+    "sky cinema family",
+
+    # Sicilia
+    "telecolor",
+    "sicilia mia",
+    "sicilia television",
+    "canale 10",
+    "canale 15",
+    "canale 21",
+    "san marino rete televisiva",
+    "telesud",
+    "tv sicilia",
+    "sun tv",
+    "sicilia tv",
+    "telepace sicilia",
+
+    # Richiesti esplicitamente
+    "sole 24 ore",
+    "7 gold",
+    "7 gold hd",
+}
+
+BLOCKLIST = {
+    "boing",
+    "cartoonito",
+    "cartoon",
+    "disney",
+    "nickelodeon",
+    "baby tv",
+    "k2",
+    "frisbee",
+    "super!",
+    "radio",
+    "radio italia",
+    "radio 105",
+    "r101",
+    "radio monte carlo",
+    "deejay radio",
+    "kiss kiss",
+    "m2o",
+    "rai yoyo",
+    "rai gulp",
+}
+
+def is_allowed_channel(name):
+    value = normalized_name(name)
+
+    if value in BLOCKLIST:
+        return False
+
+    if value in EXACT_ALLOWED:
+        return True
+
+    return False
+
+
+# ============================================================
+# CANALI NAZIONALI / ORDINAMENTO
+# ============================================================
+
+NATIONAL_CHANNELS = {
+    "rai 1", "rai 2", "rai 3",
+    "rete 4", "canale 5", "italia 1",
+    "la7", "tv8", "nove",
+    "20", "20 mediaset",
+    "rai 4", "iris", "rai 5", "rai movie", "rai premium", "cielo",
+    "27 twentyseven",
+    "tv2000", "tv 2000",
+    "la7 cinema", "la 5", "la5",
+    "real time", "qvc", "food network", "cine34", "focus",
+    "rtl 102.5", "discovery channel",
+    "giallo", "top crime",
+    "italia 2", "mediaset extra",
+    "rai news 24", "tgcom24", "tgcom 24",
+    "dmax",
+    "rai storia", "rai scuola", "rai sport",
+    "sportitalia", "sportitalia plus", "sportitalia solocalcio",
+    "supertennis",
+    "sky tg24",
+    "gambero rosso",
+    "senato tv", "camera dei deputati",
+    "sole 24 ore", "7 gold",
+}
 
 def channel_sort_key(entry):
     name = entry["name"]
     chno = get_chno(entry["info"])
     name_key = normalized_name(name)
 
-    if chno is not None:
+    if name_key in NATIONAL_CHANNELS and chno is not None:
         return (0, chno, name_key)
 
     return (1, 999999, name_key)
@@ -271,14 +384,14 @@ print("==============================================")
 raw_playlist = download(SOURCE)
 text = raw_playlist.decode("utf-8", errors="replace")
 entries = parse_m3u(text)
-
 print(f"Entry ricevute: {len(entries)}")
 
+
 # ============================================================
-# FILTRO ITALIANO + ESCLUSIONE
+# FILTRO FINALE
 # ============================================================
 
-italian = []
+filtered = []
 
 for entry in entries:
     info = entry["info"]
@@ -294,13 +407,14 @@ for entry in entries:
     if not name:
         continue
 
-    if is_blocked_name(name):
+    if not is_allowed_channel(name):
         continue
 
     entry["name"] = name
-    italian.append(entry)
+    filtered.append(entry)
 
-print(f"Canali italiani iniziali: {len(italian)}")
+print(f"Canali italiani ammessi: {len(filtered)}")
+
 
 # ============================================================
 # DEDUPLICAZIONE
@@ -310,16 +424,16 @@ unique = []
 seen_ids = set()
 seen_names = set()
 
-for entry in italian:
+for entry in filtered:
     info = entry["info"]
     tvg_id = get_attr(info, "tvg-id")
     name_key = normalized_name(entry["name"])
 
     if tvg_id:
-        tvg_id_key = tvg_id.lower()
-        if tvg_id_key in seen_ids:
+        id_key = tvg_id.lower()
+        if id_key in seen_ids:
             continue
-        seen_ids.add(tvg_id_key)
+        seen_ids.add(id_key)
     else:
         if name_key in seen_names:
             continue
@@ -328,6 +442,7 @@ for entry in italian:
     unique.append(entry)
 
 print(f"Canali dopo deduplicazione: {len(unique)}")
+
 
 # ============================================================
 # VALIDAZIONE STREAM
@@ -341,19 +456,18 @@ for entry in unique:
         verified.append(entry)
     else:
         removed += 1
-        print(f"RThe image shows a dark, modern TV-guide / IPTV interface on a tablet-like screen.
-
-What’s visible:
-- A left sidebar with channel numbers and names, including entries like “Rai 1”, “La7”, “Real Time”, “QVC”, “Food Network”, and later “Canale 10”, “Deejay TV”, “R101 TV”, “Radio 105 TVimosso: {entry['name']} -> {entry['stream'][:120]}")
+        print(f"Rimosso: {entry['name']} -> {entry['stream'][:120]}")
 
 unique = verified
 print(f"Canali dopo validazione stream: {len(unique)} (rimossi {removed})")
+
 
 # ============================================================
 # ORDINAMENTO
 # ============================================================
 
 unique.sort(key=channel_sort_key)
+
 
 # ============================================================
 # DOWNLOAD EPG ITALIA
@@ -362,26 +476,18 @@ unique.sort(key=channel_sort_key)
 print()
 print("==============================================")
 print("DOWNLOAD EPG ITALIA")
-print”, “Telecolor”.
-- A search bar at the top with “playlist_italia.gae” and a small “Real Time” tag.
-- A central program grid showing broadcast times and titles, such as:
-  - “Tg Regione”
-  - “("==============================================")
+print("==============================================")
 
 try:
     epg_gz = download(EPG_SOURCE)
     epg_xml = gzip.decompress(epg_gz).decode("utf-8", errors="replace")
     EPG_OUTPUT.write_text(epg_xml, encoding="utf-8")
-
     print(f"EPG creato: {EPG_OUTPUT}")
     print(f"Dimensione EPG: {len(epg_xml):,} caratteri")
-Tagada, tutto quanto fa…”
-  - “Casa a prima vista”
-  - “Summer Camp”
-- A big time indicator on the right showing “14:15”.
-- A blurred background with a soft, off-white / beige image beneath the UI, giving the feeling of a live TVexcept Exception as e:
+except Exception as e:
     print(f"ERRORE EPG: {e}")
     raise
+
 
 # ============================================================
 # OUTPUT PLAYLIST
@@ -397,21 +503,39 @@ for entry in unique:
 
 OUTPUT.write_text("\n".join(output) + "\n", encoding="utf-8")
 
+
 # ============================================================
 # REPORT
 # ============================================================
+
+national = []
+regional = []
+
+for entry in unique:
+    name_key = normalized_name(entry["name"])
+    chno = get_chno(entry["info"])
+
+    if name_key in NATIONAL_CHANNELS and chno is not None:
+        national.append(entry)
+    else:
+        regional.append(entry)
 
 print()
 print("==============================================")
 print("PLAYLIST CREATA")
 print("==============================================")
 
-print(f"Totale: {len(unique)}")
-print(f"File playlist: {OUTPUT}")
-print(f"File EPG: {EPG_OUTPUT}")
+print(f"Totale:              {len(unique)}")
+print(f"Nazionali numerati:  {len(national)}")
+print(f"Regionali/locali:    {len(regional)}")
+print(f"File playlist:        {OUTPUT}")
+print(f"File EPG:             {EPG_OUTPUT}")
 print("==============================================")
 
-for entry in unique[:30]:
+print()
+print("PRIMI CANALI:")
+
+for entry in unique[:20]:
     chno = get_chno(entry["info"])
     if chno is not None:
         print(f"{chno:g}  {entry['name']}")
