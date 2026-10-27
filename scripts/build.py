@@ -90,7 +90,7 @@ def parse_m3u(text):
                 entries.append({
                     "info": info,
                     "extras": extras,
-                    "stream": stream,
+                    "stream": stream
                 })
 
         i = j + 1
@@ -299,6 +299,7 @@ text = raw_playlist.decode("utf-8", errors="replace")
 entries = parse_m3u(text)
 print(f"Entry ricevute: {len(entries)}")
 
+
 # ============================================================
 # FILTRO ITALIANO + TOLLERANZA
 # ============================================================
@@ -327,6 +328,7 @@ for entry in entries:
 
 print(f"Canali italiani: {len(italian)}")
 
+
 # ============================================================
 # DEDUPLICAZIONE
 # ============================================================
@@ -354,6 +356,7 @@ for entry in italian:
 
 print(f"Canali dopo deduplicazione: {len(unique)}")
 
+
 # ============================================================
 # STREAM MORTI
 # ============================================================
@@ -370,11 +373,13 @@ for entry in unique:
 unique = verified
 print(f"Canali dopo validazione stream: {len(unique)} (rimossi {removed})")
 
+
 # ============================================================
 # ORDINAMENTO
 # ============================================================
 
 unique.sort(key=channel_sort_key)
+
 
 # ============================================================
 # DOWNLOAD EPG ITALIA
@@ -395,6 +400,7 @@ except Exception as e:
     print(f"ERRORE EPG: {e}")
     raise
 
+
 # ============================================================
 # OUTPUT PLAYLIST
 # ============================================================
@@ -408,6 +414,11 @@ for entry in unique:
     output.append(entry["stream"])
 
 OUTPUT.write_text("\n".join(output) + "\n", encoding="utf-8")
+
+
+# ============================================================
+# REPORT FINALE
+# ============================================================
 
 print()
 print("==============================================")
