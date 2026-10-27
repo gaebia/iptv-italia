@@ -150,19 +150,49 @@ def is_italian(info):
         "group-title"
     ).lower()
 
-    # Alcuni upstream list cambiano il valore del gruppo e non lo marcan
-    # più come "Italy" / "Italia". Mediaset e altri canali Italiani possono
-    # arrivare come "Mediaset", "Mediaset Italia", ecc. Questa regex
-    # preserva quelli correttamente senza scartare canali validi.
+    name = get_attr(
+        info,
+        "tvg-name"
+    ).lower()
+
+    channel_name = get_channel_name(info).lower()
+
     if country == "IT":
         return True
 
-    if not group:
+    combined = " ".join(
+        part for part in (group, name, channel_name) if part
+    )
+
+    if not combined:
         return False
 
+    italian_tokens = (
+        "italy",
+        "italia",
+        "mediaset",
+        "rai",
+        "sky",
+        "it",
+        "cielo",
+        "tv8",
+        "canale",
+        "super!",
+        "rtl",
+        "dmax",
+        "sportitalia",
+        "tg24",
+        "giallo",
+        "boing",
+        "focus",
+        "deejay",
+        "top crime",
+        "ninety",
+    )
+
     return any(
-        token in group
-        for token in ("italy", "italia", "mediaset")
+        token in combined
+        for token in italian_tokens
     )
 
 
@@ -180,6 +210,9 @@ def is_bad_stream(info, stream):
         return True
 
     if "[not 24/7]" in text:
+        return True
+
+    if "geo blocked" in text:
         return True
 
     if "youtube.com" in stream.lower():
