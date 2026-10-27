@@ -10,23 +10,17 @@ EPG_OUTPUT = Path("epg_italia.xml")
 SOURCE = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"
 EPG_SOURCE = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
 
-EPG_URL = (
-    "https://raw.githubusercontent.com/"
-    "gaebia/iptv-italia/main/epg_italia.xml"
-)
-
 HEADERS = {
     "User-Agent": "Mozilla/5.0 IPTV-Italia-Updater"
 }
-
 
 # ============================================================
 # DOWNLOAD
 # ============================================================
 
-def download(url):
-    request = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(request, timeout=30) as response:
+def download(url, timeout=25):
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req, timeout=timeout) as response:
         return response.read()
 
 
@@ -47,9 +41,9 @@ def stream_is_alive(url):
         ),
     ]
 
-    for request in attempts:
+    for req in attempts:
         try:
-            with urllib.request.urlopen(request, timeout=15) as response:
+            with urllib.request.urlopen(req, timeout=10) as response:
                 code = getattr(response, "status", 200)
                 if 200 <= code < 400:
                     return True
@@ -62,7 +56,7 @@ def stream_is_alive(url):
 
 
 # ============================================================
-# PARSER M3U
+# PARSER
 # ============================================================
 
 def parse_m3u(text):
@@ -99,13 +93,12 @@ def parse_m3u(text):
 
 
 # ============================================================
-# UTILITIES
+# TEXT HELPERS
 # ============================================================
 
 def normalize_text(value):
     if value is None:
         return ""
-
     value = str(value).lower()
     value = value.replace("&", " and ")
     value = re.sub(r"[^a-z0-9\s]+", " ", value)
@@ -144,10 +137,74 @@ def normalized_name(name):
     return value.strip()
 
 
+# ============================================================
+# FILTRI
+# ============================================================
+
+def is_local_or_regional(name):
+    n = normalized_name(name)
+    markers = (
+        "sicilia", "locale", "locali", "regione", "regionale",
+        "campania", "lazio", "veneto", "emilia", "piemonte",
+        "liguria", "toscana", "sardegna", "calabria", "puglia",
+        "marche", "umbria", "basilicata", "friuli", "trentino",
+        "aosta"
+    )
+    return any(m in n for m in markers)
+
+
+def is_radio(name):
+    n = normalized_name(name)
+    return "radio" in n or n.startswith("radio ")
+
+
+def is_cartoon(name):
+    n = normalized_name(name)
+    markers = (
+        "boing", "cartoonito", "cartoon", "disney", "nickelodeon",
+        "baby tv", "k2", "frisbee", "super!", "super"
+    )
+    return any(m in n for m in markers)
+
+
+def is_italian(info, name):
+    n = normalized_name(name)
+    country = normalize_text(get_attr(info, "tvg-country"))
+    group = normalize_text(get_attr(info, "group-title"))
+
+    if country in {"it", "italy", "italia"}:
+        return True
+    if group in {"italy", "italia"}:
+        return True
+
+    markers = (
+        "rai", "mediaset", "italia", "canale", "la7", "tv8", "nove",
+        "sicilia", "lazio", "campania", "veneto", "emilia", "piemonte",
+        "liguria", "toscana", "sardegna", "calabria", "puglia", "marche",
+        "umbria", "basilicata", "friuli", "trentino", "aosta", "sportitalia",
+        "deejay", "rtl", "giallo", "focus", "tgcom", "tg24", "dmax",
+        "qvc", "real time", "food network", "telecolor", "gambero"
+    )
+    return any(m in n for m in markers)
+
+
+def is_bad_stream(info, stream):
+    s = (info + " " + stream).lower()
+    bad = (
+        "[geo-blocked]", "[not 24/7]", "geo blocked",
+        "youtube.com", "youtu.be", "twitch.tv"
+    )
+    return any(x in s for x in bad)
+
+
+# ============================================================
+# ORDINAMENTO
+# ============================================================
+
 def ordered_local_index(name):
     n = normalized_name(name)
 
-    return {
+    mapping = {
         "rai 1": 1,
         "rai 2": 2,
         "rai 3": 3,
@@ -177,171 +234,32 @@ def ordered_local_index(name):
         "hse 24": 37,
         "giallo": 38,
         "top crime": 39,
-        "boing": 40,
-        "k2": 41,
-        "rai gulp": 42,
-        "rai yoyo": 43,
-        "frisbee": 44,
-        "boing plus": 45,
-        "cartoonito": 46,
-        "super!": 47,
         "rai news": 48,
-        "spike!": 49,
         "sky tg24": 50,
         "mediaset tgcom24": 51,
         "dmax": 52,
-        "italia 53": 53,
         "rai storia": 54,
-        "mediaset extra": 55,
-        "motor trend": 56,
-        "rai sport hd": 57,
-        "rai sport": 58,
-        "motor trend": 59,
         "sportitalia": 60,
-        "life 120 channel": 61,
-        "donna sport tv": 62,
-        "zelig sport": 63,
-        "super tennis": 64,
         "canale 65": 65,
         "italia 2": 66,
         "vh1": 67,
-        "ibox.it": 68,
         "deejay tv": 69,
         "radio italia tv": 70,
         "svizzera italiana 82": 82,
         "canale italia 83": 83,
         "canale italia 84": 84,
-        "test hevc main10": 100,
-        "rete 4": 104,
-        "canale 5": 105,
-        "italia 1": 106,
-        "la7": 107,
-        "mtv": 108,
-        "nove": 109,
-        "20 mediaset": 120,
-        "italia 121": 121,
-        "retecapri": 122,
-        "italia channel": 123,
-        "arte italia 124": 124,
-        "arte italia 125": 125,
-        "italia 126": 126,
-        "italia 127": 127,
-        "gold tv italia": 128,
-        "la4 italia": 129,
-        "channel 24": 130,
-        "reteitalia": 131,
-        "lineagem": 132,
-        "juwelo": 133,
-        "italia 134": 134,
-        "italia 135": 135,
-        "italia 136": 136,
-        "hse donna": 137,
-        "air italia": 138,
-        "deluxe 139": 139,
-        "linea italia": 140,
-        "italia 141": 141,
-        "italia 142": 142,
-        "italia 143": 143,
-        "orler tv": 144,
-        "padre pio tv": 145,
-        "rai scuola": 146,
-        "fire tv": 147,
-        "italia 148 / telesia tv": 148,
-        "capri casino": 149,
-        "italia 150": 150,
-        "mondo calcio": 151,
-        "tv 153": 153,
-        "italia 154": 154,
-        "italia 156": 156,
-        "radio 105": 157,
-        "radio kiss kiss tv": 158,
-        "italia 159": 159,
-        "italia 160": 160,
-        "cantando ballando": 161,
-        "canale 162": 162,
-        "donna shopping": 163,
-        "shopping italia": 164,
-        "canale 165": 165,
-        "mediatext.it": 166,
-        "r101 tv": 167,
-        "tele moda": 168,
-        "italia tv 3": 169,
-        "odeon 24": 170,
-        "italia tv 2": 171,
-        "tg norba 24": 180,
-    }.get(n, 9999)
+    }
+    return mapping.get(n, 9999)
 
-
-# ============================================================
-# FILTERS
-# ============================================================
-
-def is_local_or_regional(name):
-    n = normalized_name(name)
-    markers = (
-        "sicilia", "locale", "locali", "regione", "regionale",
-        "campania", "lazio", "veneto", "emilia", "piemonte",
-        "liguria", "toscana", "sardegna", "calabria", "puglia",
-        "marche", "umbria", "basilicata", "friuli", "trentino",
-        "aosta"
-    )
-    return any(m in n for m in markers)
-
-
-def is_radio(name):
-    n = normalized_name(name)
-    return "radio" in n or n.startswith("radio ")
-
-
-def is_cartoon(name):
-    n = normalized_name(name)
-    markers = (
-        "boing", "cartoonito", "cartoon", "disney", "nickelodeon",
-        "baby tv", "k2", "frisbee", "super", "super!"
-    )
-    return any(m in n for m in markers)
-
-
-def is_italian(info, name):
-    n = normalized_name(name)
-    country = normalize_text(get_attr(info, "tvg-country"))
-    group = normalize_text(get_attr(info, "group-title"))
-
-    if country in {"it", "italy", "italia"}:
-        return True
-    if group in {"italy", "italia"}:
-        return True
-
-    markers = (
-        "rai", "mediaset", "italia", "canale", "la7", "tv8", "nove",
-        "sicilia", "lazio", "campania", "veneto", "emilia", "piemonte",
-        "liguria", "toscana", "sardegna", "calabria", "puglia", "marche",
-        "umbria", "basilicata", "friuli", "trentino", "aosta", "sportitalia",
-        "deejay", "rtl", "giallo", "focus", "tgcom", "tg24", "dmax",
-        "qvc", "real time", "food network", "telecolor", "gambero"
-    )
-    return any(m in n for m in markers)
-
-
-def is_bad_stream(info, stream):
-    s = (info + " " + stream).lower()
-    bad = (
-        "[geo-blocked]", "[not 24/7]", "geo blocked", "youtube.com",
-        "youtu.be", "twitch.tv"
-    )
-    return any(x in s for x in bad)
-
-
-# ============================================================
-# ORDERING
-# ============================================================
 
 def channel_sort_key(entry):
     info = entry["info"]
     name = entry["name"]
+
     chno = get_chno(info)
     if chno is None:
         chno = ordered_local_index(name)
+
     return (0, chno, normalized_name(name))
 
 
@@ -349,12 +267,11 @@ def channel_sort_key(entry):
 # MAIN
 # ============================================================
 
-print()
 print("==============================================")
 print("DOWNLOAD PLAYLIST")
 print("==============================================")
 
-raw = download(SOURCE)
+raw = download(SOURCE, timeout=25)
 text = raw.decode("utf-8", errors="replace")
 entries = parse_m3u(text)
 print(f"Entry ricevute: {len(entries)}")
@@ -417,18 +334,29 @@ for entry in unique:
 
 unique.sort(key=lambda e: (0, e["_sort"], normalized_name(e["name"])))
 
-# EPG
-try:
-    epg_gz = download(EPG_SOURCE)
-    epg_xml = gzip.decompress(epg_gz).decode("utf-8", errors="replace")
-    EPG_OUTPUT.write_text(epg_xml, encoding="utf-8")
-    print("EPG OK")
-except Exception as e:
-    print(f"EPG fallito: {e}")
-    EPG_OUTPUT.write_text("<tv></tv>", encoding="utf-8")
-    print("EPG fallback vuoto scritto")
+# ============================================================
+# EPG - NON BLOCCA IL WORKFLOW
+# ============================================================
 
-# WRITE PLAYLIST
+print()
+print("==============================================")
+print("DOWNLOAD EPG")
+print("==============================================")
+
+try:
+    epg_data = download(EPG_SOURCE, timeout=15)
+    epg_xml = gzip.decompress(epg_data).decode("utf-8", errors="replace")
+    EPG_OUTPUT.write_text(epg_xml, encoding="utf-8")
+    print("EPG scaricato correttamente")
+except Exception as e:
+    print(f"EPG non disponibile: {e}")
+    EPG_OUTPUT.write_text("<tv></tv>", encoding="utf-8")
+    print("EPG vuoto scritto, workflow continua")
+
+# ============================================================
+# OUTPUT
+# ============================================================
+
 output_lines = [f'#EXTM3U x-tvg-url="{EPG_URL}"']
 
 for entry in unique:
@@ -458,12 +386,12 @@ print()
 print("==============================================")
 print("PLAYLIST CREATA")
 print("==============================================")
-print(f"Totale finali: {len(unique)}")
+print(f"Canali finali: {len(unique)}")
 print(f"Playlist: {OUTPUT}")
 print(f"EPG: {EPG_OUTPUT}")
 print("==============================================")
 
-for entry in unique[:30]:
+for entry in unique[:20]:
     chno = get_chno(entry["info"])
     if chno is None:
         chno = ordered_local_index(entry["name"])
