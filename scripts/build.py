@@ -10,6 +10,11 @@ EPG_OUTPUT = Path("epg_italia.xml")
 SOURCE = "https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8"
 EPG_SOURCE = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
 
+EPG_URL = (
+    "https://raw.githubusercontent.com/"
+    "gaebia/iptv-italia/main/epg_italia.xml"
+)
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 IPTV-Italia-Updater"
 }
@@ -390,6 +395,7 @@ print(f"Canali finali: {len(unique)}")
 print(f"Playlist: {OUTPUT}")
 print(f"EPG: {EPG_OUTPUT}")
 print("==============================================")
+print("PRIMI CANALI:")
 
 for entry in unique[:20]:
     chno = get_chno(entry["info"])
