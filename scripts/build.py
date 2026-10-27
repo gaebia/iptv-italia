@@ -248,6 +248,22 @@ def is_italian(info):
     return False
 
 
+def is_national_italian_channel(info, name):
+    name_key = normalized_name(name)
+    if name_key not in NATIONAL_CHANNELS:
+        return False
+
+    chno = get_chno(info)
+    if chno is None:
+        return False
+
+    country = normalize_text(get_attr(info, "tvg-country"))
+    if country and country not in {"it", "italy", "italia"}:
+        return False
+
+    return True
+
+
 # ============================================================
 # STREAM DA ESCLUDERE
 # ============================================================
@@ -466,6 +482,19 @@ for entry in unique:
 
 unique = verified
 print(f"Canali dopo validazione stream: {len(unique)} (rimossi {removed})")
+
+
+# ============================================================
+# SOLO CANALI NAZIONALI ITALIANI NUMERATI
+# ============================================================
+
+national_only = []
+for entry in unique:
+    if is_national_italian_channel(entry["info"], entry["name"]):
+        national_only.append(entry)
+
+unique = national_only
+print(f"Canali nazionali italiani numerati: {len(unique)}")
 
 
 # ============================================================
