@@ -150,10 +150,19 @@ def is_italian(info):
         "group-title"
     ).lower()
 
-    return (
-        country == "IT"
-        or group == "italy"
-        or group == "italia"
+    # Alcuni upstream list cambiano il valore del gruppo e non lo marcan
+    # più come "Italy" / "Italia". Mediaset e altri canali Italiani possono
+    # arrivare come "Mediaset", "Mediaset Italia", ecc. Questa regex
+    # preserva quelli correttamente senza scartare canali validi.
+    if country == "IT":
+        return True
+
+    if not group:
+        return False
+
+    return any(
+        token in group
+        for token in ("italy", "italia", "mediaset")
     )
 
 
