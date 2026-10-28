@@ -11,6 +11,10 @@ EPG_SOURCE = "https://epgshare01.online/epgshare01/epg_ripper_IT1.xml.gz"
 EPG_URL = "https://raw.githubusercontent.com/gaebia/iptv-italia/main/epg_italia.xml"
 HEADERS = {"User-Agent": "Mozilla/5.0 IPTV-Italia-Updater"}
 
+# Flusso alternativo Rai 2 testato dall'utente con Urban VPN.
+RAI2_STREAM = "https://raidue3-live.akamaized.net/hls/live/2017983/raidue3/raidue3/playlist.m3u8"
+RAI2_USER_AGENT = "#EXTVLCOPT:http-user-agent=HbbTV/1.6.1"
+
 
 def download(url, timeout=25):
     req = urllib.request.Request(url, headers=HEADERS)
@@ -124,7 +128,6 @@ CHANNEL_NUMBERS = {
     "r101 tv": 167, "tele moda": 168, "italia tv 3": 170, "odeon 24": 177,
     "italia tv 2": 179, "tg norba 24": 180, "radio kiss kiss tv": 158,
 }
-
 # Ordine prioritario delle locali siciliane nello slot 10-19.
 SICILIAN_ORDER = (
     "antenna sicilia", "canale 74 sicilia", "onda tv sicilia", "prima tv sicilia",
@@ -177,15 +180,31 @@ for e in filtered:
         seen.add(key)
         unique.append(e)
 
+# Modifica esclusivamente il flusso di Rai 2; gli altri canali restano invariati.
+rai2_found = False
+for e in unique:
+    if normalize_text(e["name"]) == "rai 2":
+        e["stream"] = RAI2_STREAM
+        if RAI2_USER_AGENT not in e["extras"]:
+            e["extras"].append(RAI2_USER_AGENT)
+        rai2_found = True
+        print("Rai 2: impostato il nuovo flusso Akamai")
+        break
+if not rai2_found:
+    print("ATTENZIONE: Rai 2 non trovato nella sorgente; nessuna sostituzione effettuata.")
+
 # Assegna i numeri 10-19 esclusivamente alle locali siciliane riconosciute.
 sicilian = [e for e in unique if e["_regional"] and e["_sicilian"]]
 other_regional = [e for e in unique if e["_regional"] and not e["_sicilian"]]
+
+
 def sicily_key(e):
     n = normalize_text(e["name"])
     for i, label in enumerate(SICILIAN_ORDER):
         if label in n:
             return (i, n)
     return (len(SICILIAN_ORDER), n)
+
 
 for i, e in enumerate(sorted(sicilian, key=sicily_key)):
     e["_sort"] = 10 + i if i < 10 else 181 + i - 10
@@ -196,7 +215,6 @@ for e in unique:
         e["_sort"] = e["_number"] if e["_number"] is not None else 9999
 unique.sort(key=sort_key)
 print(f"Canali selezionati: {len(unique)}")
-
 print("DOWNLOAD EPG")
 try:
     data = download(EPG_SOURCE, timeout=15)
