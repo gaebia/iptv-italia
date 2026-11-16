@@ -1,153 +1,166 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-GAEBIA IPTV - pulizia della playlist personale.
+# GAEBIA IPTV - preserva la playlist personalizzata.
+# Legge playlist_sorgente.m3u8 e genera playlist_italia.m3u8.
+# Non scarica Free-TV, non cambia URL, ID EPG, loghi o numerazione.
 
-Sorgente: playlist_sorgente.m3u8
-Output:   playlist_italia.m3u8
-
-Lo script NON scarica Free-TV e NON ricostruisce la numerazione.
-Mantiene ordine, tvg-chno, tvg-id, loghi, intestazione EPG e URL originali.
-Rimuove esclusivamente: canali RTL, radio, cartoni, religiosi ed economico-finanziari.
-"""
-
-import re
-import unicodedata
 from pathlib import Path
-from collections import Counter
+import re
+import sys
 
-SOURCE = Path("playlist_sorgente.m3u8")
-OUTPUT = Path("playlist_italia.m3u8")
+ROOT = Path(__file__).resolve().parent.parent
+SOURCE = ROOT / "playlist_sorgente.m3u8"
+OUTPUT = ROOT / "playlist_italia.m3u8"
+
+# Eliminazioni richieste: solo RTL, radio, cartoni, religiosi ed economici.
+RTL_RE = re.compile(r"\bRTL\b", re.I)
+RADIO_RE = re.compile(r"\bradio\b", re.I)
+CARTOON_TERMS = (
+    "cartoon", "cartoonito", "boing", "disney", "nickelodeon",
+    "baby tv", "rai gulp", "rai yoyo", "rai yo yo", "k2",
+    "frisbee", "super! (", "teenage mutant ninja",
+)
+RELIGIOUS_TERMS = (
+    "padre pio", "medjugorje", "telepace", "ewtn", "tele padre pio",
+    "k-tv", "k tv", "canale bibbia", "bibbia", "cristiano",
+    "cristiana", "religio", "catholic", "cattolic",
+)
+ECONOMIC_TERMS = (
+    "borsa", "finanza", "economia", "economico",
+    "business", "financial", "finance",
+)
+
+# Riordino mirato richiesto: tutti gli altri canali restano nella
+# stessa sequenza della playlist sorgente.
+AFTER_FOCUS_ORDER = ("Discovery Channel", "DMAX", "HGTV")
+AFTER_RAI5_ORDER = ("Rai Storia", "Rai Scuola")
 
 
-def normalize(value: str) -> str:
-    value = unicodedata.normalize("NFKD", value or "")
-    value = value.encode("ascii", "ignore").decode("ascii").lower()
-    return re.sub(r"[^a-z0-9]+", " ", value).strip()
+def parse_blocks(text):
+    lines = text.splitlines()
+    header, blocks, current = [], [], []
+    for line in lines:
+        if line.startswith("#EXTINF:"):
+            if current:
+                blocks.append(current)
+            current = [line]
+        elif current:
+            current.append(line)
+        else:
+            header.append(line)
+    if current:
+        blocks.append(current)
+    return header, blocks
 
 
-def get_group(info: str) -> str:
-    match = re.search(r'group-title="([^"]*)"', info, re.IGNORECASE)
-    return normalize(match.group(1)) if match else ""
+def channel_name(block):
+    for line in block:
+        if line.startswith("#EXTINF:"):
+            return line.split(",", 1)[1].strip() if "," in line else ""
+    return ""
 
 
-def removal_reason(info: str, name: str):
-    n = normalize(name)
-    words = set(n.split())
-    group = get_group(info)
-
-    # Tutti i canali del marchio RTL, non soltanto RTL 102.5.
-    if "rtl" in words:
+def should_remove(name):
+    n = name.casefold()
+    if RTL_RE.search(name):
         return "RTL"
-
-    # Tutte le radio, comprese quelle che nel nome terminano con TV.
-    if "radio" in words or "radio" in group.split():
+    if RADIO_RE.search(name):
         return "radio"
-
-    # Canali per bambini/cartoni, inclusi i franchise con nomi propri.
-    cartoon_terms = {
-        "boing", "cartoon", "cartoonito", "disney", "nickelodeon",
-        "nick jr", "nickelodeon jr", "baby tv", "babytv", "k2",
-        "frisbee", "rai gulp", "rai yoyo", "raiyoyo", "yoyo",
-        "teenage mutant ninja turtles", "turtles", "tartarughe ninja"
-    }
-    if any(normalize(term) in n for term in cartoon_terms):
+    if any(term in n for term in CARTOON_TERMS):
         return "cartoni"
-
-    # Canali esplicitamente religiosi.
-    religious_terms = (
-        "religios", "religion", "religious", "chiesa", "cristian",
-        "cattolic", "padre pio", "telepace", "vatican", "marian",
-        "god tv", "eWTN".lower()
-    )
-    if any(term in n or term in group for term in religious_terms):
+    if any(term in n for term in RELIGIOUS_TERMS):
         return "religiosi"
-
-    # Canali economici/finanziari; non rimuove televendite o shopping.
-    economic_terms = (
-        "economia", "economy", "finanza", "finanzi", "borsa",
-        "business news", "financial", "finance", "stock market",
-        "trading", "investimenti"
-    )
-    if any(term in n or term in group for term in economic_terms):
+    if any(term in n for term in ECONOMIC_TERMS):
         return "economici"
-
     return None
 
 
-def read_entries(lines):
-    """Restituisce intestazione e blocchi canale, senza alterare le righe."""
-    header = []
-    entries = []
-    i = 0
+def move_named_after(blocks, anchor_name, wanted_names):
+    selected, remaining, found = [], [], set()
+    wanted_lower = [x.casefold() for x in wanted_names]
 
-    while i < len(lines):
-        line = lines[i]
-        if not line.startswith("#EXTINF"):
-            if not entries:
-                header.append(line)
-            i += 1
-            continue
+    for block in blocks:
+        name = channel_name(block)
+        match_index = next(
+            (i for i, wanted in enumerate(wanted_lower)
+             if name.casefold().startswith(wanted)),
+            None,
+        )
+        if match_index is None:
+            remaining.append(block)
+        else:
+            selected.append((match_index, block))
+            found.add(wanted_names[match_index])
 
-        start = i
-        i += 1
-        # Include metadati supplementari e URL del canale.
-        while i < len(lines) and not lines[i].startswith("#EXTINF"):
-            i += 1
-        block = lines[start:i]
-        info = block[0]
-        name = info.split(",", 1)[1].strip() if "," in info else ""
-        entries.append((info, name, block))
+    selected.sort(key=lambda item: item[0])
+    for wanted in wanted_names:
+        if wanted not in found:
+            print(f"ATTENZIONE: canale da posizionare non trovato: {wanted}")
 
-    return header, entries
+    anchor_index = next(
+        (i for i, block in enumerate(remaining)
+         if channel_name(block).casefold().startswith(anchor_name.casefold())),
+        None,
+    )
+    if anchor_index is None:
+        print(f"ATTENZIONE: ancora non trovata: {anchor_name}")
+        return remaining
+
+    insert_at = anchor_index + 1
+    return remaining[:insert_at] + [b for _, b in selected] + remaining[insert_at:]
 
 
 def main():
-    if not SOURCE.is_file():
-        raise SystemExit(
-            f"ERRORE: non trovo {SOURCE}. "
-            "Carica la tua playlist personale nella root del repository "
-            "con questo nome esatto: playlist_sorgente.m3u8"
+    if not SOURCE.exists():
+        sys.exit(
+            f"ERRORE: non trovo {SOURCE.name}. "
+            "Carica la tua playlist personalizzata con questo nome nella root del repository."
         )
 
-    raw = SOURCE.read_text(encoding="utf-8-sig", errors="replace")
-    lines = raw.splitlines()
-    header, entries = read_entries(lines)
+    text = SOURCE.read_text(encoding="utf-8-sig", errors="replace")
+    header, blocks = parse_blocks(text)
+    if not header:
+        header = ["#EXTM3U"]
 
-    if not entries:
-        raise SystemExit("ERRORE: la playlist sorgente non contiene canali (#EXTINF).")
-
-    removed = Counter()
-    output_lines = []
-
-    # Conserva l'intestazione originale (incluso x-tvg-url) senza modificarla.
-    for line in header:
-        if line.strip():
-            output_lines.append(line)
-
-    kept = 0
-    for info, name, block in entries:
-        reason = removal_reason(info, name)
+    kept, removed = [], []
+    for block in blocks:
+        name = channel_name(block)
+        reason = should_remove(name)
         if reason:
-            removed[reason] += 1
-            continue
+            removed.append((name, reason))
+        else:
+            kept.append(block)
 
-        # Copia letterale del blocco: numerazione, ID EPG, logo, gruppo,
-        # eventuali opzioni e URL video restano identici alla sorgente.
+    # Rai Storia e Rai Scuola subito dopo Rai 5.
+    kept = move_named_after(kept, "Rai 5", AFTER_RAI5_ORDER)
+    # Discovery, DMAX e HGTV subito dopo Focus.
+    kept = move_named_after(kept, "Focus", AFTER_FOCUS_ORDER)
+
+    output_lines = header[:]
+    for block in kept:
         output_lines.extend(block)
-        kept += 1
-
     OUTPUT.write_text("\n".join(output_lines).rstrip() + "\n", encoding="utf-8")
 
-    print("===== GAEBIA IPTV: RISULTATO =====")
-    print(f"Playlist sorgente: {SOURCE}")
-    print(f"Canali iniziali:   {len(entries)}")
-    print(f"Canali mantenuti:  {kept}")
-    print(f"Canali eliminati:  {sum(removed.values())}")
-    for category in ("RTL", "radio", "cartoni", "religiosi", "economici"):
-        print(f"  {category}: {removed[category]}")
-    print(f"File creato:       {OUTPUT}")
-    print("Numerazione, ordine, EPG e URL originali: mantenuti senza modifiche.")
+    print(f"Canali iniziali: {len(blocks)}")
+    print(f"Canali eliminati: {len(removed)}")
+    for name, reason in removed:
+        print(f"  - [{reason}] {name}")
+    print(f"Canali conservati: {len(kept)}")
+    print(f"Playlist generata: {OUTPUT.name}")
+
+    # Segnala voci senza URL: vengono conservate, non si inventano stream.
+    malformed = []
+    for block in kept:
+        name = channel_name(block)
+        has_stream = any(
+            line.strip().startswith(("http://", "https://"))
+            for line in block
+        )
+        if not has_stream:
+            malformed.append(name)
+    if malformed:
+        print("ATTENZIONE: voci senza URL video nella sorgente:")
+        for name in malformed:
+            print(f"  - {name}")
 
 
 if __name__ == "__main__":
